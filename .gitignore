@@ -1,0 +1,9 @@
+*~
+*.pyc
+\#*#
+.idea/
+.codeintel/
+*.bak
+*.backup
+.DS_Store
+._.DS_Store
