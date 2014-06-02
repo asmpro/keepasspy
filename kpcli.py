@@ -19,7 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.0"
+VERSION="1.01"
 DEBUG=1
 
 # Parse command line options
@@ -34,62 +34,62 @@ parser.add_argument('-u', '--username', dest='username', nargs='?', help='Option
 args = parser.parse_args()
 
 if DEBUG:
-	#from pprint import pprint
-	#pprint(args)
-	print "File={}".format(args.file)
-	if args.keyfile != None: print "Keyfile={}".format(args.keyfile)
+    #from pprint import pprint
+    #pprint(args)
+    print "File={}".format(args.file)
+    if args.keyfile != None: print "Keyfile={}".format(args.keyfile)
 
 masterPassword = getpass.getpass("Master password: ")
 if DEBUG >= 2:
-	print "Master password={}".format(masterPassword)
+    print "Master password={}".format(masterPassword)
 
 showPasswords = args.password
 
 titleRe = None
 if args.title != None:
-	titleRe = re.compile(args.title, re.I)
+    titleRe = re.compile(args.title, re.I)
 
 usernameRe = None
 if args.username != None:
-	usernameRe = re.compile(args.username, re.I)
+    usernameRe = re.compile(args.username, re.I)
 
 try :
-	with kp.open(args.file, password=masterPassword, keyfile=args.keyfile) as kdb:
-		if isinstance(kdb, kp.kdb3.KDB3Reader):
-			raise Exception("KDB3 (.kdb, KeePass 1.x) database format not supported!")
-		elif isinstance(kdb, kp.kdb4.KDB4Reader):
-			pass
-		else:
-			raise Exception("Unknown/unsupported database format implementation in libkeepass!")
+    with kp.open(args.file, password=masterPassword, keyfile=args.keyfile) as kdb:
+        if isinstance(kdb, kp.kdb3.KDB3Reader):
+            raise Exception("KDB3 (.kdb, KeePass 1.x) database format not supported!")
+        elif isinstance(kdb, kp.kdb4.KDB4Reader):
+            pass
+        else:
+            raise Exception("Unknown/unsupported database format implementation in libkeepass!")
 
-		#print kdb.pretty_print()
-		print "Title\tUsername\tPassword\tURL\tNotes"
-        for elem in kdb.obj_root.iterfind('.//Group/Entry'):
-        	title = ""
-        	username = ""
-        	password = ""
-        	url = ""
-        	notes = ""
-        	for sel in elem.iterfind('./String'):
-        		key = sel.find('./Key')
-        		val = sel.find('./Value')
-        		if key is None or val is None: continue
+        #print kdb.pretty_print()
+        print "Title\tUsername\tPassword\tURL\tNotes"
+    for elem in kdb.obj_root.iterfind('.//Group/Entry'):
+        title = ""
+        username = ""
+        password = ""
+        url = ""
+        notes = ""
+        for sel in elem.iterfind('./String'):
+            key = sel.find('./Key')
+            val = sel.find('./Value')
+            if key is None or val is None: continue
 
-        		if "Title" in key.text: title = val.text
-        		elif "UserName" in key.text: username = val.text
-        		elif "Password" in key.text:
-        			password = val.text
-        			if not showPasswords: password = "".join(map(lambda x: "*", password))
-        		elif "URL" in key.text: url = val.text
-        		elif "Notes" in key.text: notes = val.text
+            if "Title" in key.text: title = val.text
+            elif "UserName" in key.text: username = val.text
+            elif "Password" in key.text:
+                password = val.text
+                if not showPasswords: password = "".join(map(lambda x: "*", password))
+            elif "URL" in key.text: url = val.text
+            elif "Notes" in key.text: notes = val.text
 
-        	# Check if filter allows showing data
-        	if titleRe != None:
-        		if titleRe.search(title) == None: continue
-        	if usernameRe != None:
-        		if usernameRe.search(username) == None: continue
+        # Check if filter allows showing data
+        if titleRe != None:
+            if titleRe.search(title) == None: continue
+        if usernameRe != None:
+            if usernameRe.search(username) == None: continue
 
-        	# Print out retrieved data
-        	print "\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(title, username, password, url, notes)
+        # Print out retrieved data
+        print "\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(title, username, password, url, notes)
 except Exception as e:
-	print "ERROR: {}".format(e)
+    print "ERROR: {}".format(e)
