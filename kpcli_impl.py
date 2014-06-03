@@ -124,13 +124,16 @@ if haveReadline:
             """set <option> <value>
             Set specified option to the value"""
             paramsa = params.split()
-            if len(paramsa) != 2: return
+            if len(paramsa) < 1: return
+            elif len(paramsa) == 1: value = None
+            else: value = paramsa[1]
 
             if self.options.has_key(paramsa[0]):
                 if paramsa[0].endswith("_bool"):
-                    self.options[paramsa[0]] = bool(paramsa[1])
+                    if value != None and (value == "0" or value.lower() == "false"): value = None
+                    self.options[paramsa[0]] = bool(value)
                 elif paramsa[0].endswith("_str"):
-                    self.options[paramsa[0]] = str(paramsa[1])
+                    self.options[paramsa[0]] = value
 
         def complete_set(self, text, line, begidx, endidx):
             if not text:
