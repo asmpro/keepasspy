@@ -62,79 +62,6 @@ if haveReadline:
 
             return response
 
-# Dump the database, optionally limiting output by regexps by fields (filter).
-# If showPasswords is true also show passwords in the output.
-def database_dump(kdb, showPasswords = False, filter = None):
-    print "Title\tUsername\tPassword\tURL\tNotes"
-    isfirst = True
-    for elem in kdb.obj_root.iterfind('.//Group/Entry'):
-        title = ""
-        username = ""
-        password = ""
-        url = ""
-        notes = ""
-        for sel in elem.iterfind('./String'):
-            key = sel.find('./Key')
-            val = sel.find('./Value')
-            if key is None or val is None: continue
-
-            if "Title" in key.text: title = val.text
-            elif "UserName" in key.text: username = val.text
-            elif "Password" in key.text:
-                origPassword = password = val.text
-                if not showPasswords: password = "".join(map(lambda x: "*", password))
-            elif "URL" in key.text: url = val.text
-            elif "Notes" in key.text: notes = val.text
-
-        # Check if filter allows showing data
-        if filter != None:
-            if filter.has_key("title") and filter["title"].search(title) == None: continue
-            if filter.has_key("username") and filter["username"].search(username) == None: continue
-
-        # Print out retrieved data
-        print "\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(title, username, password, url, notes)
-    #!!!
-
-# Dispatch command recevied via input.
-def dispatch_command(line, kdba, dbFile, masterPassword, keyFile, options):
-    lineParts = line.split()
-    supportedCommands = ("find", "dump", "reload", "get", "set", "quit")
-
-    if len(lineParts) == 0 or lineParts[0].lower() == "help" or lineParts[0] == "?" or lineParts[0] == "h":
-        if len(lineParts) <= 1:
-            print " ".join(supportedCommands)
-        else:
-            arg = lineParts[1].lower()
-            if arg == "find" or arg == "f":
-                print "find <field1> <regex1> [<field2> <regex2> ... ]\tSearch database by specified field using regular expression"
-                print "    Supported fields: title, username"
-            elif arg == "dump" or arg == "d":
-                print "dump\tDump whole database in CSV format. If show_passwords option is set, show passwords as well"
-            elif arg == "reload":
-                print "reload\tReload kdb database if kdb file has changed from previous load"
-            elif arg == "get":
-                print "get [option]\tPrint out all possible options and associated values (or just one if specified as argument)"
-            elif arg == "set":
-                print "set <option> <value>\tSet specified option to the value"
-            elif arg == "quit" or arg == "q":
-                print "quit\tQuit interactive shell (shortcut q can be used as well)"
-            elif arg == "help" or arg == "h" or arg == "?":
-                print "help\tThis help (shortcut ? or h can be used as well)"
-    elif lineParts[0].lower() == "dump" or lineParts[0].lower() == "d":
-        database_dump(kdba[0], options['show_passwords'])
-    elif lineParts[0].lower() == "find" or lineParts[0].lower() == "f":
-        if len(lineParts) < 3 or len(lineParts) % 2 != 1:
-            print "Invalid usage, see help"
-            return
-        params = lineParts[1:]
-        filters = { x: re.compile(y, re.I) for x in params[0::2] for y in params[1::2] }
-        unknown = set(filters.keys()) - set(["title", "username"])
-        if len(unknown) > 0:
-            print "Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
-            return
-        database_dump(kdba[0], options['show_passwords'], filters)
-    #!!!
-
 # Function to copy given text to clipboard and wait (timeout seconds, before emptying cliboard out)
 def copyToClipboard(text, timeout=12):
     if sys.platform == 'linux2':
@@ -172,6 +99,92 @@ def copyToClipboard(text, timeout=12):
         print "Unable to copy text to clipboard: {}".format(e)
         return
 
+# Dump the database, optionally limiting output by regexps by fields (filter).
+# If showPasswords is true also show passwords in the output.
+# If doCopyToClipboard is not None, copy requested field name to clipboard.
+# If copyToClipboardTimeout is not None, use it as override timer for copy to clipboard function.
+def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard = None, copyToClipboardTimeout = None):
+    print "Title\tUsername\tPassword\tURL\tNotes"
+    isfirst = True
+    for elem in kdb.obj_root.iterfind('.//Group/Entry'):
+        title = ""
+        username = ""
+        password = ""
+        url = ""
+        notes = ""
+        for sel in elem.iterfind('./String'):
+            key = sel.find('./Key')
+            val = sel.find('./Value')
+            if key is None or val is None: continue
+
+            if "Title" in key.text: title = val.text
+            elif "UserName" in key.text: username = val.text
+            elif "Password" in key.text:
+                origPassword = password = val.text
+                if not showPasswords: password = "".join(map(lambda x: "*", password))
+            elif "URL" in key.text: url = val.text
+            elif "Notes" in key.text: notes = val.text
+
+        # Check if filter allows showing data
+        if filter != None:
+            if filter.has_key("title") and filter["title"].search(title) == None: continue
+            if filter.has_key("username") and filter["username"].search(username) == None: continue
+
+        # Print out retrieved data
+        print "\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(title, username, password, url, notes)
+
+        if isfirst and doCopyToClipboard != None:
+            copyText = None
+            if doCopyToClipboard == "password":
+                copyText = origPassword
+            elif doCopyToClipboard == "username":
+                copyText = username
+
+            if copyText != None:
+                if copyToClipboardTimeout != None: copyToClipboard(copyText, copyToClipboardTimeout)
+                else: copyToClipboard(copyText)
+        isfirst = False
+
+# Dispatch command recevied via input.
+def dispatch_command(line, kdba, dbFile, masterPassword, keyFile, options):
+    lineParts = line.split()
+    supportedCommands = ("find", "dump", "reload", "get", "set", "quit")
+
+    if len(lineParts) == 0 or lineParts[0].lower() == "help" or lineParts[0] == "?" or lineParts[0] == "h":
+        if len(lineParts) <= 1:
+            print " ".join(supportedCommands)
+        else:
+            arg = lineParts[1].lower()
+            if arg == "find" or arg == "f":
+                print "find <field1> <regex1> [<field2> <regex2> ... ]\tSearch database by specified field using regular expression"
+                print "    Supported fields: title, username"
+            elif arg == "dump" or arg == "d":
+                print "dump\tDump whole database in CSV format. If show_passwords option is set, show passwords as well"
+            elif arg == "reload":
+                print "reload\tReload kdb database if kdb file has changed from previous load"
+            elif arg == "get":
+                print "get [option]\tPrint out all possible options and associated values (or just one if specified as argument)"
+            elif arg == "set":
+                print "set <option> <value>\tSet specified option to the value"
+            elif arg == "quit" or arg == "q":
+                print "quit\tQuit interactive shell (shortcut q can be used as well)"
+            elif arg == "help" or arg == "h" or arg == "?":
+                print "help\tThis help (shortcut ? or h can be used as well)"
+    elif lineParts[0].lower() == "dump" or lineParts[0].lower() == "d":
+        database_dump(kdba[0], options['show_passwords'], None, options['copy_to_clipboard'])
+    elif lineParts[0].lower() == "find" or lineParts[0].lower() == "f":
+        if len(lineParts) < 3 or len(lineParts) % 2 != 1:
+            print "Invalid usage, see help"
+            return
+        params = lineParts[1:]
+        filters = { x: re.compile(y, re.I) for x in params[0::2] for y in params[1::2] }
+        unknown = set(filters.keys()) - set(["title", "username"])
+        if len(unknown) > 0:
+            print "Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
+            return
+        database_dump(kdba[0], options['show_passwords'], filters, options['copy_to_clipboard'])
+    #!!!
+
 
 # Parse command line options
 parser = argparse.ArgumentParser()
@@ -206,14 +219,6 @@ if DEBUG >= 2:
 
 showPasswords = args.password
 
-titleRe = None
-if args.title != None:
-    titleRe = re.compile(args.title, re.I)
-
-usernameRe = None
-if args.username != None:
-    usernameRe = re.compile(args.username, re.I)
-
 kdba = [None]
 stream = None
 try :
@@ -237,7 +242,7 @@ try :
             readline.set_completer(SimpleCompleter(['find', 'dump', 'reload', 'help', '?', 'get', 'set', 'quit']).complete)
             readline.parse_and_bind("tab: complete")
             line = ''
-            options = { 'show_passwords': showPasswords }
+            options = { 'show_passwords': showPasswords, 'copy_to_clipboard': args.copy }
             while line != 'quit' and line != 'q':
                 try:
                     line = raw_input('kpcli> ')
@@ -246,40 +251,12 @@ try :
                 dispatch_command(line, kdba, args.file, masterPassword, args.keyfile, options)
                 #print "Line={}".format(line)
         else:
-            print "Title\tUsername\tPassword\tURL\tNotes"
-            isfirst = True
-            for elem in kdb.obj_root.iterfind('.//Group/Entry'):
-                title = ""
-                username = ""
-                password = ""
-                url = ""
-                notes = ""
-                for sel in elem.iterfind('./String'):
-                    key = sel.find('./Key')
-                    val = sel.find('./Value')
-                    if key is None or val is None: continue
-
-                    if "Title" in key.text: title = val.text
-                    elif "UserName" in key.text: username = val.text
-                    elif "Password" in key.text:
-                        origPassword = password = val.text
-                        if not showPasswords: password = "".join(map(lambda x: "*", password))
-                    elif "URL" in key.text: url = val.text
-                    elif "Notes" in key.text: notes = val.text
-
-                # Check if filter allows showing data
-                if titleRe != None:
-                    if titleRe.search(title) == None: continue
-                if usernameRe != None:
-                    if usernameRe.search(username) == None: continue
-
-                # Print out retrieved data
-                print "\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(title, username, password, url, notes)
-
-                if isfirst and args.copy != None:
-                    if args.copy == "password":
-                        copyToClipboard(origPassword)
-                isfirst = False
+            filters = {}
+            if args.title != None:
+                filters['title'] = re.compile(args.title, re.I)
+            if args.username != None:
+                filters['username'] = re.compile(args.username, re.I)
+            database_dump(kdb, showPasswords, filters, args.copy)
 except Exception as e:
     print "ERROR: {}".format(e)
     if DEBUG:
