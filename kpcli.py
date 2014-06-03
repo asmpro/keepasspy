@@ -82,11 +82,11 @@ if haveReadline:
             Search database by specified field using regular expression. Synonym is f command."
               Supported fields: title, username"""
             paramsa = params.split()
-            filters = { x: re.compile(y, re.I) for x in paramsa[0::2] for y in paramsa[1::2] }
+            if len(paramsa) % 2 != 0: print "You forgot one of the fieldX regexX pairs"
+            filters = dict(zip(paramsa[0::2], map(lambda x: re.compile(x, re.I), paramsa[1::2])))
             unknown = set(filters.keys()) - set(["title", "username"])
             if len(unknown) > 0:
                 print "Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
-                return
             database_dump(kdba[0], self.options['show_passwords_bool'], filters, self.options['copy_to_clipboard_str'])
 
         def do_f(self, params):
