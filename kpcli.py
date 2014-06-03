@@ -22,6 +22,7 @@ if sys.hexversion < 0x02070000:
 # If available import readline (interactivity depends on it)
 try:
     import readline
+    import cmd
     haveReadline = True
 except:
     haveReadline = False
@@ -34,33 +35,113 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.02"
+VERSION="1.03"
 DEBUG=1
+VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014'.format(VERSION)
 
 if DEBUG and not haveReadline: print "We do NOT have readline module!"
 # If we have readline module, define class used for completing all possible commands
 # in the interactive prompt.
 if haveReadline:
-    class SimpleCompleter(object):
-        def __init__(self, options):
-            self.options = sorted(options)
+    class Shell(cmd.Cmd):
+        prompt = 'kpcli> '
 
-        def complete(self, text, state):
-            response = None
+        FIND_FIELDS = ['username ', 'title ']
+        SET_OPTIONS = ['show_passwords_bool ', 'copy_to_clipboard_str ']
 
-            if state == 0:
-                # This is the first time for this text, so build a match list.
-                if text:
-                    self.matches = [s for s in self.options if s and s.startswith(text)]
-                else:
-                    self.matches = self.options[:]
+        def __init__(self, kdba, file, masterPassword, keyFile, options, completekey='tab', stdin=None, stdout=None):
+            cmd.Cmd.__init__(self, completekey, stdin, stdout)
+            self.kdba = kdba
+            self.masterPassword = masterPassword
+            self.keyFile = keyFile
+            self.options = options
 
-            try:
-                response = self.matches[state]
-            except IndexError:
-                pass
+        def do_version(self, line):
+            """version
+            Show program name, version and author."""
+            print VERSION_STR
 
-            return response
+        def do_quit(self, line):
+            """quit
+            Quit shell. Synonym is q command."""
+            return True
+
+        def do_q(self, line):
+            return self.do_quit(line)
+
+        def do_dump(self, line):
+            """dump
+            Dump whole database in CSV format. If show_passwords option is set, show passwords as well. Synonym is d command."""
+            database_dump(self.kdba[0], self.options['show_passwords_bool'], None, options['copy_to_clipboard_str'])
+
+        def do_d(self, line):
+            return self.do_dump(line)
+
+        def do_find(self, params):
+            """find <field1> <regex1> [<field2> <regex2> ... ]
+            Search database by specified field using regular expression. Synonym is f command."
+              Supported fields: title, username"""
+            paramsa = params.split()
+            filters = { x: re.compile(y, re.I) for x in paramsa[0::2] for y in paramsa[1::2] }
+            unknown = set(filters.keys()) - set(["title", "username"])
+            if len(unknown) > 0:
+                print "Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
+                return
+            database_dump(kdba[0], self.options['show_passwords_bool'], filters, self.options['copy_to_clipboard_str'])
+
+        def do_f(self, params):
+            return self.do_find(params)
+
+        def complete_find(self, text, line, begidx, endidx):
+            if not text:
+                comps = self.FIND_FIELDS[:]
+            else:
+                comps = [f for f in self.FIND_FIELDS if f.startswith(text)]
+
+            return comps
+
+        def complete_f(self, text, line, begidx, endidx):
+            return self.complete_find(text, line, begidx, endidx)
+
+        def do_reload(self, line):
+            """reload [file]
+            Reload kdb database if kdb file has changed from previous load or if new file is specified as parameter."""
+            #!!!
+            pass
+
+        def do_get(self, params):
+            """get [option]
+            Print out all possible options and associated values (or just one if specified as argument)"""
+            paramsa = params.split()
+            if len(paramsa) == 0:
+                for k, v in self.options.iteritems():
+                    print "{}\t{}".format(k, v)
+            else:
+                if self.options.has_key(paramsa[0]):
+                    print "{}\t{}".format(paramsa[0], self.options[paramsa[0]])
+
+        def do_set(self, params):
+            """set <option> <value>
+            Set specified option to the value"""
+            paramsa = params.split()
+            if len(paramsa) != 2: return
+
+            if self.options.has_key(paramsa[0]):
+                if paramsa[0].endswith("_bool"):
+                    self.options[paramsa[0]] = bool(paramsa[1])
+                elif paramsa[0].endswith("_str"):
+                    self.options[paramsa[0]] = str(paramsa[1])
+
+        def complete_set(self, text, line, begidx, endidx):
+            if not text:
+                comps = self.SET_OPTIONS[:]
+            else:
+                comps = [f for f in self.SET_OPTIONS if f.startswith(text)]
+
+            return comps
+
+        def do_EOF(self, line):
+            return True
 
 # Function to copy given text to clipboard and wait (timeout seconds, before emptying cliboard out)
 def copyToClipboard(text, timeout=12):
@@ -145,50 +226,9 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                 else: copyToClipboard(copyText)
         isfirst = False
 
-# Dispatch command recevied via input.
-def dispatch_command(line, kdba, dbFile, masterPassword, keyFile, options):
-    lineParts = line.split()
-    supportedCommands = ("find", "dump", "reload", "get", "set", "quit")
-
-    if len(lineParts) == 0 or lineParts[0].lower() == "help" or lineParts[0] == "?" or lineParts[0] == "h":
-        if len(lineParts) <= 1:
-            print " ".join(supportedCommands)
-        else:
-            arg = lineParts[1].lower()
-            if arg == "find" or arg == "f":
-                print "find <field1> <regex1> [<field2> <regex2> ... ]\tSearch database by specified field using regular expression"
-                print "    Supported fields: title, username"
-            elif arg == "dump" or arg == "d":
-                print "dump\tDump whole database in CSV format. If show_passwords option is set, show passwords as well"
-            elif arg == "reload":
-                print "reload\tReload kdb database if kdb file has changed from previous load"
-            elif arg == "get":
-                print "get [option]\tPrint out all possible options and associated values (or just one if specified as argument)"
-            elif arg == "set":
-                print "set <option> <value>\tSet specified option to the value"
-            elif arg == "quit" or arg == "q":
-                print "quit\tQuit interactive shell (shortcut q can be used as well)"
-            elif arg == "help" or arg == "h" or arg == "?":
-                print "help\tThis help (shortcut ? or h can be used as well)"
-    elif lineParts[0].lower() == "dump" or lineParts[0].lower() == "d":
-        database_dump(kdba[0], options['show_passwords'], None, options['copy_to_clipboard'])
-    elif lineParts[0].lower() == "find" or lineParts[0].lower() == "f":
-        if len(lineParts) < 3 or len(lineParts) % 2 != 1:
-            print "Invalid usage, see help"
-            return
-        params = lineParts[1:]
-        filters = { x: re.compile(y, re.I) for x in params[0::2] for y in params[1::2] }
-        unknown = set(filters.keys()) - set(["title", "username"])
-        if len(unknown) > 0:
-            print "Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
-            return
-        database_dump(kdba[0], options['show_passwords'], filters, options['copy_to_clipboard'])
-    #!!!
-
-
 # Parse command line options
 parser = argparse.ArgumentParser()
-parser.add_argument('-v', '--version', action='version', version='%(prog)s V{}'.format(VERSION))
+parser.add_argument('-v', '--version', action='version', version=VERSION_STR)
 parser.add_argument('-f', '--file', dest='file', nargs='?', default='test.kdbx', help='KDB4 file (.kdbx)')
 parser.add_argument('-k', '--keyfile', dest='keyfile', nargs='?', help='Additional keyfile to use as master key')
 parser.add_argument('-p', '--password', dest='password', action='store_const', const=True, default=False, help='Shall we show password (if this argument is not given, asterisks are shown instead of password)')
@@ -228,35 +268,24 @@ try :
     kdba[0] = cls(stream, password=masterPassword, keyfile=args.keyfile)
     kdb = kdba[0]
 
-    #with kp.open(args.file, password=masterPassword, keyfile=args.keyfile) as kdb:
-    if True:
-        if isinstance(kdb, kp.kdb3.KDB3Reader):
-            raise Exception("KDB3 (.kdb, KeePass 1.x) database format not supported!")
-        elif isinstance(kdb, kp.kdb4.KDB4Reader):
-            pass
-        else:
-            raise Exception("Unknown/unsupported database format implementation in libkeepass!")
+    if isinstance(kdb, kp.kdb3.KDB3Reader):
+        raise Exception("KDB3 (.kdb, KeePass 1.x) database format not supported!")
+    elif isinstance(kdb, kp.kdb4.KDB4Reader):
+        pass
+    else:
+        raise Exception("Unknown/unsupported database format implementation in libkeepass!")
 
-        #print kdb.pretty_print()
-        if interactive:
-            readline.set_completer(SimpleCompleter(['find', 'dump', 'reload', 'help', '?', 'get', 'set', 'quit']).complete)
-            readline.parse_and_bind("tab: complete")
-            line = ''
-            options = { 'show_passwords': showPasswords, 'copy_to_clipboard': args.copy }
-            while line != 'quit' and line != 'q':
-                try:
-                    line = raw_input('kpcli> ')
-                except EOFError:
-                    break
-                dispatch_command(line, kdba, args.file, masterPassword, args.keyfile, options)
-                #print "Line={}".format(line)
-        else:
-            filters = {}
-            if args.title != None:
-                filters['title'] = re.compile(args.title, re.I)
-            if args.username != None:
-                filters['username'] = re.compile(args.username, re.I)
-            database_dump(kdb, showPasswords, filters, args.copy)
+    #print kdb.pretty_print()
+    if interactive:
+        options = { 'show_passwords_bool': showPasswords, 'copy_to_clipboard_str': args.copy }
+        Shell(kdba, args.file, masterPassword, args.keyfile, options).cmdloop()
+    else:
+        filters = {}
+        if args.title != None:
+            filters['title'] = re.compile(args.title, re.I)
+        if args.username != None:
+            filters['username'] = re.compile(args.username, re.I)
+        database_dump(kdb, showPasswords, filters, args.copy)
 except Exception as e:
     print "ERROR: {}".format(e)
     if DEBUG:
