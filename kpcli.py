@@ -208,8 +208,8 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
 
         # Check if filter allows showing data
         if filter != None:
-            if filter.has_key("title") and filter["title"].search(title) == None: continue
-            if filter.has_key("username") and filter["username"].search(username) == None: continue
+            if title != None and filter.has_key("title") and filter["title"].search(title) == None: continue
+            if username != None and filter.has_key("username") and filter["username"].search(username) == None: continue
 
         # Print out retrieved data
         print "\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(title, username, password, url, notes)
