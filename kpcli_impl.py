@@ -168,11 +168,14 @@ def copyToClipboard(text, timeout=12):
 
     # Wait for timeout seconds, outputing timeout seconds before clearing clipboard
     waitTime = 0
-    while waitTime < timeout:
-        print "\r{}s".format(waitTime + 1),
-        sys.stdout.flush()
-        waitTime += 1
-        time.sleep(1)
+    try:
+        while waitTime < timeout:
+            print "\r{}s".format(waitTime + 1),
+            sys.stdout.flush()
+            waitTime += 1
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
     print ""
     print "Clearing out clipboard..."
 
