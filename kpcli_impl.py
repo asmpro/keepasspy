@@ -42,6 +42,46 @@ DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014'.format(VERSION)
 
 if DEBUG and not haveReadline: print "We do NOT have readline module!"
+
+def parse_field_value(params):
+    """Parse "field value" params and return dict, where fields are keys, and value values.
+
+    field is always a word without a space.
+    value can be a word without a space or multiword enclosed in single or double quotes, i.e.: "test me"
+    If None is specified without quotes, set value to None"""
+
+    ret = {}
+    if params is None: return ret
+
+    state = 0
+    idx = 0
+    key = None
+    while idx < len(params):
+        if state == 0:
+            cidx = params.find(" ", idx)
+            if cidx == -1: break
+            key = params[idx:cidx]
+            idx = cidx + 1
+            state = 1
+        elif state == 1:
+            if params[idx] == '"' or params[idx] == "'":
+                quoteChar = params[idx]
+                endQuoteIdx = params.find(quoteChar, idx + 1)
+                if endQuoteIdx == -1: break
+                value = params[idx + 1:endQuoteIdx - 1]
+                idx = endQuoteIdx + 2
+            else:
+                cidx = params.find(" ", idx)
+                if cidx == -1: cidx = len(params)
+                value = params[idx:cidx]
+                if value == "None": value = None
+                idx = cidx + 1
+            if value == None: ret[key] = None
+            else: ret[key] = re.compile(value, re.I)
+            state = 0
+
+    return ret
+
 # If we have readline module, define class used for completing all possible commands
 # in the interactive prompt.
 if haveReadline:
@@ -83,17 +123,14 @@ if haveReadline:
             """find <field1> <regex1> [<field2> <regex2> ... ]
             Search database by specified field using regular expression. Synonym is f command."
               Supported fields: title, username"""
-            paramsa = params.split()
-            if len(paramsa) % 2 != 0: print "You forgot one of the fieldX regexX pairs"
+            #paramsa = params.split()
+            #if len(paramsa) % 2 != 0: print "You forgot one of the fieldX regexX pairs"
             #filters = dict(zip(paramsa[0::2], map(lambda x: re.compile(x, re.I), paramsa[1::2])))
-            filters = dict(zip(paramsa[0::2], paramsa[1::2]))
+            #filters = dict(zip(paramsa[0::2], paramsa[1::2]))
+            filters = parse_field_value(params)
             unknown = set(filters.keys()) - set(["title", "username", "uuid", "url"])
             if len(unknown) > 0:
-                print "Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
-            # For each filter check if value string is "None" string, the force it to None value, else compile regexp instead of string value
-            for k, v in filters.iteritems():
-                if v == "None": filters[k] = None
-                else: filters[k] = re.compile(v, re.I)
+                print "WARNING: Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
             database_dump(kdba[0], self.options['show_passwords_bool'], filters, self.options['copy_to_clipboard_str'])
 
         def do_f(self, params):
@@ -153,8 +190,9 @@ if haveReadline:
         def do_EOF(self, line):
             return True
 
-# Function to copy given text to clipboard and wait (timeout seconds, before emptying cliboard out)
 def copyToClipboard(text, timeout=12):
+    """Function to copy given text to clipboard and wait (timeout seconds, before emptying cliboard out)"""
+
     if sys.platform == 'linux2':
         prog = 'xclip'
     elif sys.platform in ('win32', 'cygwin'):
@@ -193,11 +231,13 @@ def copyToClipboard(text, timeout=12):
         print "Unable to copy text to clipboard: {}".format(e)
         return
 
-# Dump the database, optionally limiting output by regexps by fields (filter).
-# If showPasswords is true also show passwords in the output.
-# If doCopyToClipboard is not None, copy requested field name to clipboard.
-# If copyToClipboardTimeout is not None, use it as override timer for copy to clipboard function.
 def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard = None, copyToClipboardTimeout = None):
+    """Dump the database, optionally limiting output by regexps by fields (filter).
+
+    If showPasswords is true also show passwords in the output.
+    If doCopyToClipboard is not None, copy requested field name to clipboard.
+    If copyToClipboardTimeout is not None, use it as override timer for copy to clipboard function."""
+
     print "UUID\tTitle\tUsername\tPassword\tURL\tNotes"
     isfirst = True
     for elem in kdb.obj_root.iterfind('.//Group/Entry'):
@@ -244,7 +284,11 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                    (url != None and filter["url"] != None and filter["url"].search(url) == None): continue
 
         # Print out retrieved data
-        print "{}\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(cuuid, title, username, password, url, notes)
+        def map_none(x):
+            if x == None: return "None"
+            else: return '"{}"'.format(x)
+
+        print "{}\t{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, title, username, password, url, notes]))
 
         if isfirst and doCopyToClipboard != None:
             copyText = None
@@ -259,6 +303,18 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                 if copyToClipboardTimeout != None: copyToClipboard(copyText, copyToClipboardTimeout)
                 else: copyToClipboard(copyText)
         isfirst = False
+
+def decode_input_value_and_regex(value):
+    """Decodes input unquotes or quoted value and if not None, return regex of it.
+
+    Decode value using the following rules:
+    If value == None or value == "None" then return None
+    If len(value) > 2 and ((value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))): return value[1:-1]"""
+
+    if value == None or value == "None": return None
+    if len(value) > 2 and ((value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))): return re.compile(value[1:-1], re.I)
+
+    return re.compile(value, re.I)
 
 # Parse command line options
 parser = argparse.ArgumentParser()
@@ -319,18 +375,10 @@ try :
         Shell(kdba, args.file, masterPassword, args.keyfile, options).cmdloop()
     else:
         filters = {}
-        if args.title != None:
-            if args.title == "None": filters['title'] = None
-            else: filters['title'] = re.compile(args.title, re.I)
-        if args.username != None:
-            if args.username == "None": filters['username'] = None
-            else: filters['username'] = re.compile(args.username, re.I)
-        if args.uuid != None:
-            if args.uuid == "None": filters['uuid'] = None
-            else: filters['uuid'] = re.compile(args.uuid, re.I)
-        if args.url != None:
-            if args.url == "None": filters['url'] = None
-            else: filters['url'] = re.compile(args.url, re.I)
+        if args.title != None: filters['title'] = decode_input_value_and_regex(args.title)
+        if args.username != None: filters['username'] = decode_input_value_and_regex(args.username)
+        if args.uuid != None: filters['uuid'] = decode_input_value_and_regex(args.uuid)
+        if args.url != None: filters['url'] = decode_input_value_and_regex(args.url)
         database_dump(kdb, showPasswords, filters, args.copy)
 except Exception as e:
     print "ERROR: {}".format(e)
