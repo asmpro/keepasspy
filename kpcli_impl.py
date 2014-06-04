@@ -253,7 +253,7 @@ if DEBUG:
     #pprint(args)
     print "File={}".format(args.file)
     if args.keyfile != None: print "Keyfile={}".format(args.keyfile)
-    if args.password != None: print "Show passwords in clear"
+    if args.password: print "Show passwords in clear"
     if args.title != None: print "Show only titles matching regexp '{}'".format(args.title)
     if args.username != None: print "Show only usernames matching regexp '{}'".format(args.username)
     if args.copy != None: print "Copy {} field to clipboard".format(args.copy)
