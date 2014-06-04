@@ -14,6 +14,8 @@ import subprocess
 import time
 import traceback
 import io
+import base64
+import uuid
 
 # Check if we have required Python version
 if sys.hexversion < 0x02070000:
@@ -35,7 +37,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.03"
+VERSION="1.04"
 DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014'.format(VERSION)
 
@@ -46,7 +48,7 @@ if haveReadline:
     class Shell(cmd.Cmd):
         prompt = 'kpcli> '
 
-        FIND_FIELDS = ['username ', 'title ']
+        FIND_FIELDS = ['username ', 'title ', 'url ', 'uuid ']
         SET_OPTIONS = ['show_passwords_bool ', 'copy_to_clipboard_str ']
 
         def __init__(self, kdba, file, masterPassword, keyFile, options, completekey='tab', stdin=None, stdout=None):
@@ -83,10 +85,15 @@ if haveReadline:
               Supported fields: title, username"""
             paramsa = params.split()
             if len(paramsa) % 2 != 0: print "You forgot one of the fieldX regexX pairs"
-            filters = dict(zip(paramsa[0::2], map(lambda x: re.compile(x, re.I), paramsa[1::2])))
-            unknown = set(filters.keys()) - set(["title", "username"])
+            #filters = dict(zip(paramsa[0::2], map(lambda x: re.compile(x, re.I), paramsa[1::2])))
+            filters = dict(zip(paramsa[0::2], paramsa[1::2]))
+            unknown = set(filters.keys()) - set(["title", "username", "uuid", "url"])
             if len(unknown) > 0:
                 print "Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
+            # For each filter check if value string is "None" string, the force it to None value, else compile regexp instead of string value
+            for k, v in filters.iteritems():
+                if v == "None": filters[k] = None
+                else: filters[k] = re.compile(v, re.I)
             database_dump(kdba[0], self.options['show_passwords_bool'], filters, self.options['copy_to_clipboard_str'])
 
         def do_f(self, params):
@@ -191,7 +198,7 @@ def copyToClipboard(text, timeout=12):
 # If doCopyToClipboard is not None, copy requested field name to clipboard.
 # If copyToClipboardTimeout is not None, use it as override timer for copy to clipboard function.
 def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard = None, copyToClipboardTimeout = None):
-    print "Title\tUsername\tPassword\tURL\tNotes"
+    print "UUID\tTitle\tUsername\tPassword\tURL\tNotes"
     isfirst = True
     for elem in kdb.obj_root.iterfind('.//Group/Entry'):
         title = ""
@@ -199,6 +206,11 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
         password = ""
         url = ""
         notes = ""
+        cuuid = ""
+
+        val = elem.find('./UUID')
+        if val is not None and val.text is not None and val.text != "":
+            cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
         for sel in elem.iterfind('./String'):
             key = sel.find('./Key')
             val = sel.find('./Value')
@@ -214,11 +226,25 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
 
         # Check if filter allows showing data
         if filter != None:
-            if title != None and filter.has_key("title") and filter["title"].search(title) == None: continue
-            if username != None and filter.has_key("username") and filter["username"].search(username) == None: continue
+            if filter.has_key("uuid"):
+                if (cuuid == None and filter["uuid"] != None) or \
+                   (cuuid != None and filter["uuid"] == None) or \
+                   (cuuid != None and filter["uuid"] != None and filter["uuid"].search(cuuid) == None): continue
+            if filter.has_key("title"):
+                if (title == None and filter["title"] != None) or \
+                   (title != None and filter["title"] == None) or \
+                   (title != None and filter["title"] != None and filter["title"].search(title) == None): continue
+            if filter.has_key("username"):
+                if (username == None and filter["username"] != None) or \
+                   (username != None and filter["username"] == None) or \
+                   (username != None and filter["username"] != None and filter["username"].search(username) == None): continue
+            if filter.has_key("url"):
+                if (url == None and filter["url"] != None) or \
+                   (url != None and filter["url"] == None) or \
+                   (url != None and filter["url"] != None and filter["url"].search(url) == None): continue
 
         # Print out retrieved data
-        print "\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(title, username, password, url, notes)
+        print "{}\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"\t\"{}\"".format(cuuid, title, username, password, url, notes)
 
         if isfirst and doCopyToClipboard != None:
             copyText = None
@@ -226,6 +252,8 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                 copyText = origPassword
             elif doCopyToClipboard == "username":
                 copyText = username
+            elif doCopyToClipboard == "url":
+                copyText = url
 
             if copyText != None:
                 if copyToClipboardTimeout != None: copyToClipboard(copyText, copyToClipboardTimeout)
@@ -240,6 +268,8 @@ parser.add_argument('-k', '--keyfile', dest='keyfile', nargs='?', help='Addition
 parser.add_argument('-p', '--password', dest='password', action='store_const', const=True, default=False, help='Shall we show password (if this argument is not given, asterisks are shown instead of password)')
 parser.add_argument('-t', '--title', dest='title', nargs='?', help='Optional regex value to filter only required titles')
 parser.add_argument('-u', '--username', dest='username', nargs='?', help='Optional regex value to filter only required usernames')
+parser.add_argument('--uuid', dest='uuid', nargs='?', help='Optional UUID regex value to filter only entries with matching UUID')
+parser.add_argument('--url', dest='url', nargs='?', help='Optional URL regex value to filter only entries with matching URL')
 parser.add_argument('-c', '--copy', dest='copy', nargs='?', help='Optional requirement to copy specified field (password) to clipboard (if this function is supported for your OS)')
 interactive = False
 if haveReadline:
@@ -256,6 +286,8 @@ if DEBUG:
     if args.password: print "Show passwords in clear"
     if args.title != None: print "Show only titles matching regexp '{}'".format(args.title)
     if args.username != None: print "Show only usernames matching regexp '{}'".format(args.username)
+    if args.uuid != None: print "Show only UUID entries matching regexp '{}'".format(args.uuid)
+    if args.url != None: print "Show only URL entries matching regexp '{}'".format(args.url)
     if args.copy != None: print "Copy {} field to clipboard".format(args.copy)
     if interactive: print "Requested interactive shell"
 
@@ -288,9 +320,17 @@ try :
     else:
         filters = {}
         if args.title != None:
-            filters['title'] = re.compile(args.title, re.I)
+            if args.title == "None": filters['title'] = None
+            else: filters['title'] = re.compile(args.title, re.I)
         if args.username != None:
-            filters['username'] = re.compile(args.username, re.I)
+            if args.username == "None": filters['username'] = None
+            else: filters['username'] = re.compile(args.username, re.I)
+        if args.uuid != None:
+            if args.uuid == "None": filters['uuid'] = None
+            else: filters['uuid'] = re.compile(args.uuid, re.I)
+        if args.url != None:
+            if args.url == "None": filters['url'] = None
+            else: filters['url'] = re.compile(args.url, re.I)
         database_dump(kdb, showPasswords, filters, args.copy)
 except Exception as e:
     print "ERROR: {}".format(e)
