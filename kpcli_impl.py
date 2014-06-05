@@ -360,6 +360,8 @@ try :
     signature = kp.read_signature(stream)
     cls = kp.get_kdb_reader(signature)
     kdba[0] = cls(stream, password=masterPassword, keyfile=args.keyfile)
+    stream.close()
+    stream = None
     kdb = kdba[0]
 
     if isinstance(kdb, kp.kdb3.KDB3Reader):
