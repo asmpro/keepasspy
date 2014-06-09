@@ -122,7 +122,7 @@ if haveReadline:
         def do_find(self, params):
             """find <field1> <regex1> [<field2> <regex2> ... ]
             Search database by specified field using regular expression. Synonym is f command."
-              Supported fields: title, username"""
+              Supported fields: title, username, url, uuid"""
             #paramsa = params.split()
             #if len(paramsa) % 2 != 0: print "You forgot one of the fieldX regexX pairs"
             #filters = dict(zip(paramsa[0::2], map(lambda x: re.compile(x, re.I), paramsa[1::2])))
