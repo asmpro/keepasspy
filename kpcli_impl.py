@@ -16,6 +16,7 @@ import traceback
 import io
 import base64
 import uuid
+import datetime
 from lxml import etree
 
 # Check if we have required Python version
@@ -322,6 +323,14 @@ if haveReadline:
                 self.prompt = "*kpcli> "
                 print "Added new entry with UUID {}".format(retuuid)
 
+        def complete_add(self, text, line, begidx, endidx):
+            if not text:
+                comps = self.MODIFY_FIELDS[:]
+            else:
+                comps = [f for f in self.MODIFY_FIELDS if f.startswith(text)]
+
+            return comps
+
         def do_EOF(self, line):
             return self.do_quit(line)
 
@@ -416,7 +425,7 @@ def database_add_modify(kdb, keyVals):
             encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes)
         except Exception as e:
             print "ERROR: Invalid UUID: {}".format(e)
-            return retuuid
+            return None
 
         del keyVals['uuid']
         for elem in kdb.obj_root.iterfind('.//Group/Entry'):
@@ -426,6 +435,7 @@ def database_add_modify(kdb, keyVals):
                     km = keyMap[k]
                     found = False
                     # Try to find existing entry
+                    elem2 = None
                     for elem2 in elem.iterfind("./String"):
                         key = elem2.find("./Key")
                         val = elem2.find("./Value")
@@ -445,11 +455,58 @@ def database_add_modify(kdb, keyVals):
                         if k == "password": val.set('Protected', 'False')
                         string.append(key)
                         string.append(val)
-                        elem.append(string)
+                        if elem2 != None: elem2.addnext(string)
+                        else: elem.append(string)
                 break
     elif "group_uuid" in keyVals:
-        #!!!
-        pass
+        retuuid = None
+        newuuid = None
+        encnewuuid = None
+        try:
+            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['group_uuid'])).bytes)
+            nuuid = uuid.uuid4()
+            newuuid = str(nuuid)
+            encnewuuid = base64.b64encode(nuuid.bytes)
+        except Exception as e:
+            print "ERROR: Invalid group UUID: {}".format(e)
+            return None
+
+        del keyVals['group_uuid']
+        for elem in kdb.obj_root.iterfind('.//Group'):
+            val = elem.find('./UUID')
+            if val is not None and val.text is not None and val.text == encuuid:
+                # Create new Entry under this Group node
+                entry = etree.SubElement(elem, "Entry")
+                etree.SubElement(entry, "UUID")._setText(encnewuuid)
+                etree.SubElement(entry, "IconID")._setText("0")
+                etree.SubElement(entry, "ForegroundColor")
+                etree.SubElement(entry, "BackgroundColor")
+                etree.SubElement(entry, "OverrideURL")
+                etree.SubElement(entry, "Tags")
+                times = etree.SubElement(entry, "Times")
+                cdt = datetime.datetime.utcnow()
+                cdtstr = cdt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                etree.SubElement(times, "CreationTime")._setText(cdtstr)
+                etree.SubElement(times, "LastModificationTime")._setText(cdtstr)
+                etree.SubElement(times, "LastAccessTime")._setText(cdtstr)
+                etree.SubElement(times, "ExpiryTime")._setText(cdtstr)
+                etree.SubElement(times, "Expires")._setText("False")
+                etree.SubElement(times, "UsageCount")._setText("0")
+                etree.SubElement(times, "LocationChanged")._setText(cdtstr)
+                for k, v in keyVals.iteritems():
+                    km = keyMap[k]
+                    string = etree.SubElement(entry, "String")
+                    etree.SubElement(string, "Key")._setText(km)
+                    etree.SubElement(string, "Value")._setText(v)
+                autoType = etree.SubElement(entry, "AutoType")
+                etree.SubElement(autoType, "Enabled")._setText("True")
+                etree.SubElement(autoType, "DataTransferObfuscation")._setText("0")
+                association = etree.SubElement(autoType, "Association")
+                etree.SubElement(association, "Window")._setText("Target Window")
+                etree.SubElement(association, "KeystrokeSequence")._setText("{USERNAME}{TAB}{PASSWORD}{TAB}{ENTER}")
+
+                retuuid = newuuid
+                break
     else:
         print "ERROR: At least uuid or group_uuid keys should be present!"
 
@@ -462,7 +519,7 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
     If doCopyToClipboard is not None, copy requested field name to clipboard.
     If copyToClipboardTimeout is not None, use it as override timer for copy to clipboard function."""
 
-    print "UUID\tTitle\tUsername\tPassword\tURL\tNotes"
+    print "UUID\tTitle\tUsername\tPassword\tURL\tNotes\tGroup Name"
     isfirst = True
     for elem in kdb.obj_root.iterfind('.//Group/Entry'):
         title = ""
@@ -471,6 +528,7 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
         url = ""
         notes = ""
         cuuid = ""
+        groupName = ""
 
         val = elem.find('./UUID')
         if val is not None and val.text is not None and val.text != "":
@@ -491,6 +549,13 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
             elif "URL" in key.text: url = val.text
             elif "Notes" in key.text: notes = val.text
 
+        # Try to retrieve group name as well
+        val = elem.getparent()
+        if val is not None:
+            val = val.find('./Name')
+            if val is not None and val.text is not None and val.text != "":
+                groupName = val.text
+
         # Check if filter allows showing data
         if filter != None:
             if filter.has_key("uuid"):
@@ -510,7 +575,7 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                    (url != None and filter["url"] == None) or \
                    (url != None and filter["url"] != None and filter["url"].search(url) == None): continue
 
-        print "{}\t{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, title, username, password, url, notes]))
+        print "{}\t{}\t{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, title, username, password, url, notes, groupName]))
 
         if isfirst and doCopyToClipboard != None:
             copyText = None
