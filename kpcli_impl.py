@@ -519,7 +519,7 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
     If doCopyToClipboard is not None, copy requested field name to clipboard.
     If copyToClipboardTimeout is not None, use it as override timer for copy to clipboard function."""
 
-    print "UUID\tTitle\tUsername\tPassword\tURL\tNotes\tGroup Name"
+    print "UUID\tTitle\tUsername\tPassword\tURL\tNotes\tGroup Name\tGroup UUID"
     isfirst = True
     for elem in kdb.obj_root.iterfind('.//Group/Entry'):
         title = ""
