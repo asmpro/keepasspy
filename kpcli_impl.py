@@ -16,6 +16,7 @@ import traceback
 import io
 import base64
 import uuid
+from lxml import etree
 
 # Check if we have required Python version
 if sys.hexversion < 0x02070000:
@@ -37,18 +38,19 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.04"
+VERSION="1.10"
 DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014'.format(VERSION)
 
 if DEBUG and not haveReadline: print "We do NOT have readline module!"
 
-def parse_field_value(params):
+def parse_field_value(params, keyLower=False, regexVal=True):
     """Parse "field value" params and return dict, where fields are keys, and value values.
 
     field is always a word without a space.
     value can be a word without a space or multiword enclosed in single or double quotes, i.e.: "test me"
-    If None is specified without quotes, set value to None"""
+    If None is specified without quotes, set value to None
+    If keyLower is True also make all keys lowercase"""
 
     ret = {}
     if params is None: return ret
@@ -60,7 +62,10 @@ def parse_field_value(params):
         if state == 0:
             cidx = params.find(" ", idx)
             if cidx == -1: break
-            key = params[idx:cidx]
+            if keyLower:
+                key = params[idx:cidx].lower()
+            else:
+                key = params[idx:cidx]
             idx = cidx + 1
             state = 1
         elif state == 1:
@@ -68,7 +73,7 @@ def parse_field_value(params):
                 quoteChar = params[idx]
                 endQuoteIdx = params.find(quoteChar, idx + 1)
                 if endQuoteIdx == -1: break
-                value = params[idx + 1:endQuoteIdx - 1]
+                value = params[idx + 1:endQuoteIdx]
                 idx = endQuoteIdx + 2
             else:
                 cidx = params.find(" ", idx)
@@ -77,7 +82,9 @@ def parse_field_value(params):
                 if value == "None": value = None
                 idx = cidx + 1
             if value == None: ret[key] = None
-            else: ret[key] = re.compile(value, re.I)
+            else:
+                if regexVal: ret[key] = re.compile(value, re.I)
+                else: ret[key] = value
             state = 0
 
     return ret
@@ -89,11 +96,13 @@ if haveReadline:
         prompt = 'kpcli> '
 
         FIND_FIELDS = ['username ', 'title ', 'url ', 'uuid ']
+        MODIFY_FIELDS = ['username ', 'title ', 'url ', 'password ', 'notes ']
         SET_OPTIONS = ['show_passwords_bool ', 'copy_to_clipboard_str ']
 
-        def __init__(self, kdba, file, masterPassword, keyFile, options, completekey='tab', stdin=None, stdout=None):
+        def __init__(self, kdba, dbFile, masterPassword, keyFile, options, completekey='tab', stdin=None, stdout=None):
             cmd.Cmd.__init__(self, completekey, stdin, stdout)
             self.kdba = kdba
+            self.dbFile = dbFile
             self.masterPassword = masterPassword
             self.keyFile = keyFile
             self.options = options
@@ -119,15 +128,22 @@ if haveReadline:
         def do_d(self, line):
             return self.do_dump(line)
 
+        def do_dumpgroups(self, line):
+            """do_dumpgroups
+            Dump all the groups, including their UUIDs.
+            Usefull for add new entry command, whe group UUID is needed."""
+            database_group_dump(self.kdba[0])
+
+        def do_pprint(self, line):
+            """pprint
+            Pretty print out database to stdout"""
+            print kdba[0].pretty_print()
+
         def do_find(self, params):
             """find <field1> <regex1> [<field2> <regex2> ... ]
             Search database by specified field using regular expression. Synonym is f command."
               Supported fields: title, username, url, uuid"""
-            #paramsa = params.split()
-            #if len(paramsa) % 2 != 0: print "You forgot one of the fieldX regexX pairs"
-            #filters = dict(zip(paramsa[0::2], map(lambda x: re.compile(x, re.I), paramsa[1::2])))
-            #filters = dict(zip(paramsa[0::2], paramsa[1::2]))
-            filters = parse_field_value(params)
+            filters = parse_field_value(params, keyLower=True)
             unknown = set(filters.keys()) - set(["title", "username", "uuid", "url"])
             if len(unknown) > 0:
                 print "WARNING: Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
@@ -148,10 +164,10 @@ if haveReadline:
             return self.complete_find(text, line, begidx, endidx)
 
         def do_reload(self, line):
-            """reload [file]
+            """reload [dbFile]
             Reload kdb database if kdb file has changed from previous load or if new file is specified as parameter."""
+            print "NOT IMPLEMENTED YET!"
             #!!!
-            pass
 
         def do_get(self, params):
             """get [option]
@@ -164,9 +180,26 @@ if haveReadline:
                 if self.options.has_key(paramsa[0]):
                     print "{}\t{}".format(paramsa[0], self.options[paramsa[0]])
 
+            # Also show read only options (dbFile and keyFile locations)
+            print "\nRead Only options:"
+            print "dbFile\t{}".format(self.dbFile)
+            print "keyFile\t{}".format(self.keyFile)
+
+        def complete_get(self, text, line, begidx, endidx):
+            if not text:
+                comps = self.SET_OPTIONS[:]
+            else:
+                comps = [f for f in self.SET_OPTIONS if f.startswith(text)]
+
+            return comps
+
         def do_set(self, params):
             """set <option> <value>
-            Set specified option to the value"""
+            Set specified option to the value:
+
+            option may be one of:
+              show_passwords_bool: Should we show passwords in clear? true (1) or false (0)
+              copy_to_clipboard_str: What field should we copy to clipboard (password, username or url)"""
             paramsa = params.split()
             if len(paramsa) < 1: return
             elif len(paramsa) == 1: value = None
@@ -184,6 +217,61 @@ if haveReadline:
                 comps = self.SET_OPTIONS[:]
             else:
                 comps = [f for f in self.SET_OPTIONS if f.startswith(text)]
+
+            return comps
+
+        def do_write(self, params):
+            """write [-p] [dbFile [keyfile] ]
+            Write current in memory representation of data to output kdbX file.
+            Optional dbFile and of course keyfile may be specified to override current dbFile and keyfile.
+            If -p flag is specified also ask for new master password before writing new dbFile.
+            """
+            flds = params.split()
+            if len(flds) > 0 and flds[0] == "-p":
+                self.masterPassword = getpass.getpass("Master password: ")
+                del flds[0]
+            if len(flds) > 0:
+                self.dbFile = flds[0]
+                if len(flds) > 1: self.keyFile = flds[1]
+
+            # Try to write data to output file
+            try:
+                with open(self.dbFile, "wb") as fout:
+                    credentials = { 'password': self.masterPassword }
+                    if self.keyFile != None: credentials['keyfile'] = self.keyFile
+                    self.kdba[0].clear_credentials()
+                    self.kdba[0].add_credentials(**credentials)
+                    self.kdba[0].write_to(fout)
+                    self.kdba[0].unprotect()
+            except Exception as e:
+                print "ERROR: Unable to write back file {}: {}".format(self.dbFile, e)
+
+        def do_modify(self, params):
+            """modify <uuid> <key1> <value1> [key1 value2 [ ... ]]
+            Modify existing entry fields specified by uuid.
+            Key may be one of supported fields (title, username, password, url, notes)"""
+            idx = params.find(" ")
+            if idx == -1:
+                print "ERROR: uuid missing"
+                return
+            uuid = params[0:idx]
+            keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
+            unknown = set(keyVals.keys()) - set(["title", "username", "password", "url", "notes"])
+            if len(unknown) > 0:
+                print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
+                return
+            if len(keyVals) == 0:
+                print "ERROR: At least ne key/value must be specified"
+                return
+            keyVals['uuid'] = uuid
+            retuuid = database_add_modify(kdba[0], keyVals)
+            print "Modified UUID {}".format(retuuid)
+
+        def complete_modify(self, text, line, begidx, endidx):
+            if not text:
+                comps = self.MODIFY_FIELDS[:]
+            else:
+                comps = [f for f in self.MODIFY_FIELDS if f.startswith(text)]
 
             return comps
 
@@ -230,6 +318,84 @@ def copyToClipboard(text, timeout=12):
     except Exception as e:
         print "Unable to copy text to clipboard: {}".format(e)
         return
+
+# Print out retrieved data
+def map_none(x):
+    if x == None: return "None"
+    else: return '"{}"'.format(x)
+
+def database_group_dump(kdb):
+    """Dump all the groups including their UUIDs"""
+    print "UUID\t\t\t\t\tGroup name\tParent group UUID"
+
+    for elem in kdb.obj_root.iterfind('.//Group'):
+        name = ""
+        cuuid = ""
+        puuid = None
+
+        val = elem.find('./Name')
+        if val is not None and val.text is not None and val.text != "":
+            name = val.text
+        val = elem.find('./UUID')
+        if val is not None and val.text is not None and val.text != "":
+            cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+
+        # Find parent group if it exists and extract it's uuid as well
+        pelem = elem.getparent()
+        #pelem = elem.find("../../Group")
+        if pelem is not None:
+            val = pelem.find('./UUID')
+            if val is not None and val.text is not None and val.text != "":
+                puuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+
+        print "{}\t{}\t{}".format(*map(map_none, [cuuid, name, puuid]))
+
+def database_add_modify(kdb, keyVals):
+    """Add new or modify existing Entry in the XML tree.
+    If uuid key is present, entry is modified,
+    else if group_uuid is present new entry is added to requested group_uuid."""
+    retuuid = None
+    keyMap = { 'title': 'Title', 'username': 'UserName', 'password': 'Password', 'url': 'URL', 'notes': 'Notes' }
+
+    if "uuid" in keyVals:
+        retuuid = keyVals['uuid']
+        encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes)
+        del keyVals['uuid']
+        for elem in kdb.obj_root.iterfind('.//Group/Entry'):
+            val = elem.find('./UUID')
+            if val is not None and val.text is not None and val.text == encuuid:
+                for k, v in keyVals.iteritems():
+                    km = keyMap[k]
+                    found = False
+                    # Try to find existing entry
+                    for elem2 in elem.iterfind("./String"):
+                        key = elem2.find("./Key")
+                        val = elem2.find("./Value")
+                        if key is None or key.text is None or key.text != km: continue
+                        found = True
+                        if val == None:
+                            val = etree.Element('Value')
+                            elem2.append(val)
+                        val._setText(v)
+                    # If not found, add new String element
+                    if not found:
+                        string = etree.Element('String')
+                        key = etree.Element('Key')
+                        val = etree.Element('Value')
+                        key.text = km
+                        val.text = v
+                        if k == "password": val.set('Protected', 'False')
+                        string.append(key)
+                        string.append(val)
+                        elem.append(string)
+                break
+    elif "group_uuid" in keyVals:
+        #!!!
+        pass
+    else:
+        print "ERROR: At least uuid or group_uuid keys should be present!"
+
+    return retuuid
 
 def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard = None, copyToClipboardTimeout = None):
     """Dump the database, optionally limiting output by regexps by fields (filter).
@@ -283,11 +449,6 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                    (url != None and filter["url"] == None) or \
                    (url != None and filter["url"] != None and filter["url"].search(url) == None): continue
 
-        # Print out retrieved data
-        def map_none(x):
-            if x == None: return "None"
-            else: return '"{}"'.format(x)
-
         print "{}\t{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, title, username, password, url, notes]))
 
         if isfirst and doCopyToClipboard != None:
@@ -326,7 +487,8 @@ parser.add_argument('-t', '--title', dest='title', nargs='?', help='Optional reg
 parser.add_argument('-u', '--username', dest='username', nargs='?', help='Optional regex value to filter only required usernames')
 parser.add_argument('--uuid', dest='uuid', nargs='?', help='Optional UUID regex value to filter only entries with matching UUID')
 parser.add_argument('--url', dest='url', nargs='?', help='Optional URL regex value to filter only entries with matching URL')
-parser.add_argument('-c', '--copy', dest='copy', nargs='?', help='Optional requirement to copy specified field (password) to clipboard (if this function is supported for your OS)')
+parser.add_argument('-c', '--copy', dest='copy', nargs='?', help='Optional requirement to copy specified field (password, username or url) to clipboard (if this function is supported for your OS)')
+parser.add_argument('--pprint', dest='dopprint', action='store_const', const=True, default=False, help='Optional requirement to first pretty print database out')
 interactive = False
 if haveReadline:
     parser.add_argument('-i', '--interactive', dest='interactive', action='store_const', const=True, default=False, help='Should we start interactive shell to operate on open database')
@@ -371,7 +533,7 @@ try :
     else:
         raise Exception("Unknown/unsupported database format implementation in libkeepass!")
 
-    #print kdb.pretty_print()
+    if args.dopprint: print kdb.pretty_print()
     if interactive:
         options = { 'show_passwords_bool': showPasswords, 'copy_to_clipboard_str': args.copy }
         Shell(kdba, args.file, masterPassword, args.keyfile, options).cmdloop()
