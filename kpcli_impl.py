@@ -39,7 +39,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.10"
+VERSION="1.11"
 DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014'.format(VERSION)
 
@@ -96,7 +96,7 @@ if haveReadline:
     class Shell(cmd.Cmd):
         prompt = 'kpcli> '
 
-        FIND_FIELDS = ['username ', 'title ', 'url ', 'uuid ', 'groupname ']
+        FIND_FIELDS = ['username ', 'title ', 'url ', 'uuid ', 'groupname ', 'groupuuid ']
         MODIFY_FIELDS = ['username ', 'title ', 'url ', 'password ', 'notes ']
         SET_OPTIONS = ['show_passwords_bool ', 'copy_to_clipboard_str ']
 
@@ -143,9 +143,9 @@ if haveReadline:
         def do_find(self, params):
             """find <field1> <regex1> [<field2> <regex2> ... ]
             Search database by specified field using regular expression. Synonym is f command."
-              Supported fields: title, username, url, uuid, groupname"""
+              Supported fields: title, username, url, uuid, groupname, groupuuid"""
             filters = parse_field_value(params, keyLower=True)
-            unknown = set(filters.keys()) - set(["title", "username", "uuid", "url", "groupname"])
+            unknown = set(filters.keys()) - set(["title", "username", "uuid", "url", "groupname", "groupuuid"])
             if len(unknown) > 0:
                 print "WARNING: Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
             database_dump(kdba[0], self.options['show_passwords_bool'], filters, self.options['copy_to_clipboard_str'])
@@ -529,6 +529,7 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
         notes = ""
         cuuid = ""
         groupName = ""
+        groupUuid = ""
 
         val = elem.find('./UUID')
         if val is not None and val.text is not None and val.text != "":
@@ -550,11 +551,17 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
             elif "Notes" in key.text: notes = val.text
 
         # Try to retrieve group name as well
-        val = elem.getparent()
-        if val is not None:
-            val = val.find('./Name')
+        group = elem.getparent()
+        if group is not None:
+            val = group.find('./Name')
             if val is not None and val.text is not None and val.text != "":
                 groupName = val.text
+            val = group.find('./UUID')
+            if val is not None and val.text is not None and val.text != "":
+                try:
+                    groupUuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+                except Exception as e:
+                    print "ERROR: Invalid group UUID: {}".format(e)
 
         # Check if filter allows showing data
         if filter != None:
@@ -578,8 +585,12 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                 if (groupName == None and filter["groupname"] != None) or \
                    (groupName != None and filter["groupname"] == None) or \
                    (groupName != None and filter["groupname"] != None and filter["groupname"].search(groupName) == None): continue
+            if filter.has_key("groupuuid"):
+                if (groupUuid == None and filter["groupuuid"] != None) or \
+                   (groupUuid != None and filter["groupuuid"] == None) or \
+                   (groupUuid != None and filter["groupuuid"] != None and filter["groupuuid"].search(groupUuid) == None): continue
 
-        print "{}\t{}\t{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, title, username, password, url, notes, groupName]))
+        print "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, title, username, password, url, notes, groupName, groupUuid]))
 
         if isfirst and doCopyToClipboard != None:
             copyText = None
@@ -618,6 +629,7 @@ parser.add_argument('-u', '--username', dest='username', nargs='?', help='Option
 parser.add_argument('--uuid', dest='uuid', nargs='?', help='Optional UUID regex value to filter only entries with matching UUID')
 parser.add_argument('--url', dest='url', nargs='?', help='Optional URL regex value to filter only entries with matching URL')
 parser.add_argument('--groupname', dest='groupname', nargs='?', help='Optional URL regex value to filter only entries with matching group names')
+parser.add_argument('--groupuuid', dest='groupuuid', nargs='?', help='Optional URL regex value to filter only entries with matching group uuid')
 parser.add_argument('-c', '--copy', dest='copy', nargs='?', help='Optional requirement to copy specified field (password, username or url) to clipboard (if this function is supported for your OS)')
 parser.add_argument('--pprint', dest='dopprint', action='store_const', const=True, default=False, help='Optional requirement to first pretty print database out')
 interactive = False
@@ -637,7 +649,8 @@ if DEBUG:
     if args.username != None: print "Show only usernames matching regexp '{}'".format(args.username)
     if args.uuid != None: print "Show only UUID entries matching regexp '{}'".format(args.uuid)
     if args.url != None: print "Show only URL entries matching regexp '{}'".format(args.url)
-    if args.groupname != None: print "Show only entries in the group matching regexp '{}'".format(args.groupname)
+    if args.groupname != None: print "Show only entries in the group name matching regexp '{}'".format(args.groupname)
+    if args.groupuuid != None: print "Show only entries in the group uuid matching regexp '{}'".format(args.groupuuid)
     if args.copy != None: print "Copy {} field to clipboard".format(args.copy)
     if interactive: print "Requested interactive shell"
 
@@ -676,6 +689,7 @@ try :
         if args.uuid != None: filters['uuid'] = decode_input_value_and_regex(args.uuid)
         if args.url != None: filters['url'] = decode_input_value_and_regex(args.url)
         if args.groupname != None: filters['groupname'] = decode_input_value_and_regex(args.groupname)
+        if args.groupuuid != None: filters['groupuuid'] = decode_input_value_and_regex(args.groupuuid)
         database_dump(kdb, showPasswords, filters, args.copy)
 except Exception as e:
     print "ERROR: {}".format(e)
