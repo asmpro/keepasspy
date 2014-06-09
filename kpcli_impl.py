@@ -96,7 +96,7 @@ if haveReadline:
     class Shell(cmd.Cmd):
         prompt = 'kpcli> '
 
-        FIND_FIELDS = ['username ', 'title ', 'url ', 'uuid ']
+        FIND_FIELDS = ['username ', 'title ', 'url ', 'uuid ', 'groupname ']
         MODIFY_FIELDS = ['username ', 'title ', 'url ', 'password ', 'notes ']
         SET_OPTIONS = ['show_passwords_bool ', 'copy_to_clipboard_str ']
 
@@ -143,9 +143,9 @@ if haveReadline:
         def do_find(self, params):
             """find <field1> <regex1> [<field2> <regex2> ... ]
             Search database by specified field using regular expression. Synonym is f command."
-              Supported fields: title, username, url, uuid"""
+              Supported fields: title, username, url, uuid, groupname"""
             filters = parse_field_value(params, keyLower=True)
-            unknown = set(filters.keys()) - set(["title", "username", "uuid", "url"])
+            unknown = set(filters.keys()) - set(["title", "username", "uuid", "url", "groupname"])
             if len(unknown) > 0:
                 print "WARNING: Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
             database_dump(kdba[0], self.options['show_passwords_bool'], filters, self.options['copy_to_clipboard_str'])
@@ -574,6 +574,10 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                 if (url == None and filter["url"] != None) or \
                    (url != None and filter["url"] == None) or \
                    (url != None and filter["url"] != None and filter["url"].search(url) == None): continue
+            if filter.has_key("groupname"):
+                if (groupName == None and filter["groupname"] != None) or \
+                   (groupName != None and filter["groupname"] == None) or \
+                   (groupName != None and filter["groupname"] != None and filter["groupname"].search(groupName) == None): continue
 
         print "{}\t{}\t{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, title, username, password, url, notes, groupName]))
 
@@ -613,6 +617,7 @@ parser.add_argument('-t', '--title', dest='title', nargs='?', help='Optional reg
 parser.add_argument('-u', '--username', dest='username', nargs='?', help='Optional regex value to filter only required usernames')
 parser.add_argument('--uuid', dest='uuid', nargs='?', help='Optional UUID regex value to filter only entries with matching UUID')
 parser.add_argument('--url', dest='url', nargs='?', help='Optional URL regex value to filter only entries with matching URL')
+parser.add_argument('--groupname', dest='groupname', nargs='?', help='Optional URL regex value to filter only entries with matching group names')
 parser.add_argument('-c', '--copy', dest='copy', nargs='?', help='Optional requirement to copy specified field (password, username or url) to clipboard (if this function is supported for your OS)')
 parser.add_argument('--pprint', dest='dopprint', action='store_const', const=True, default=False, help='Optional requirement to first pretty print database out')
 interactive = False
@@ -632,6 +637,7 @@ if DEBUG:
     if args.username != None: print "Show only usernames matching regexp '{}'".format(args.username)
     if args.uuid != None: print "Show only UUID entries matching regexp '{}'".format(args.uuid)
     if args.url != None: print "Show only URL entries matching regexp '{}'".format(args.url)
+    if args.groupname != None: print "Show only entries in the group matching regexp '{}'".format(args.groupname)
     if args.copy != None: print "Copy {} field to clipboard".format(args.copy)
     if interactive: print "Requested interactive shell"
 
@@ -669,6 +675,7 @@ try :
         if args.username != None: filters['username'] = decode_input_value_and_regex(args.username)
         if args.uuid != None: filters['uuid'] = decode_input_value_and_regex(args.uuid)
         if args.url != None: filters['url'] = decode_input_value_and_regex(args.url)
+        if args.groupname != None: filters['groupname'] = decode_input_value_and_regex(args.groupname)
         database_dump(kdb, showPasswords, filters, args.copy)
 except Exception as e:
     print "ERROR: {}".format(e)
