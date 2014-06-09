@@ -163,11 +163,28 @@ if haveReadline:
         def complete_f(self, text, line, begidx, endidx):
             return self.complete_find(text, line, begidx, endidx)
 
-        def do_reload(self, line):
-            """reload [dbFile]
+        def do_reload(self, params):
+            """reload [-p] [dbFile [keyFile] ]
             Reload kdb database if kdb file has changed from previous load or if new file is specified as parameter."""
-            print "NOT IMPLEMENTED YET!"
-            #!!!
+            flds = params.split()
+            if len(flds) > 0 and flds[0] == "-p":
+                self.masterPassword = getpass.getpass("Master password: ")
+                del flds[0]
+            if len(flds) > 0:
+                self.dbFile = flds[0]
+                if len(flds) > 1: self.keyFile = flds[1]
+
+            stream = None
+            try:
+                stream = io.open(self.dbFile, 'rb')
+                signature = kp.read_signature(stream)
+                cls = kp.get_kdb_reader(signature)
+                self.kdba[0] = cls(stream, password=self.masterPassword, keyfile=self.keyFile)
+                self.prompt = "kpcli> "
+            except Exception as e:
+                print "ERROR: Unable to reload kdbX file {}: {}".format(self.dbFile, e)
+            finally:
+                if stream != None: stream.close()
 
         def do_get(self, params):
             """get [option]
@@ -243,6 +260,7 @@ if haveReadline:
                     self.kdba[0].add_credentials(**credentials)
                     self.kdba[0].write_to(fout)
                     self.kdba[0].unprotect()
+                    self.prompt = "kpcli> "
             except Exception as e:
                 print "ERROR: Unable to write back file {}: {}".format(self.dbFile, e)
 
@@ -255,6 +273,8 @@ if haveReadline:
                 print "ERROR: uuid missing"
                 return
             uuid = params[0:idx]
+            if (uuid.startswith('"') and uuid.endswith('"')) or \
+               (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
             unknown = set(keyVals.keys()) - set(["title", "username", "password", "url", "notes"])
             if len(unknown) > 0:
@@ -265,7 +285,9 @@ if haveReadline:
                 return
             keyVals['uuid'] = uuid
             retuuid = database_add_modify(kdba[0], keyVals)
-            print "Modified UUID {}".format(retuuid)
+            if retuuid != None:
+                self.prompt = "*kpcli> "
+                print "Modified UUID {}".format(retuuid)
 
         def complete_modify(self, text, line, begidx, endidx):
             if not text:
@@ -275,8 +297,33 @@ if haveReadline:
 
             return comps
 
+        def do_add(self, params):
+            """add <group_uuid> <key1> <value1> [key1 value2 [ ... ]]
+            Add new entry under group specified by group_uuid.
+            Key may be one of supported fields (title, username, password, url, notes)"""
+            idx = params.find(" ")
+            if idx == -1:
+                print "ERROR: group_uuid missing"
+                return
+            uuid = params[0:idx]
+            if (uuid.startswith('"') and uuid.endswith('"')) or \
+               (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
+            keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
+            unknown = set(keyVals.keys()) - set(["title", "username", "password", "url", "notes"])
+            if len(unknown) > 0:
+                print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
+                return
+            if len(keyVals) == 0:
+                print "ERROR: At least ne key/value must be specified"
+                return
+            keyVals['group_uuid'] = uuid
+            retuuid = database_add_modify(kdba[0], keyVals)
+            if retuuid != None:
+                self.prompt = "*kpcli> "
+                print "Added new entry with UUID {}".format(retuuid)
+
         def do_EOF(self, line):
-            return True
+            return self.do_quit(line)
 
 def copyToClipboard(text, timeout=12):
     """Function to copy given text to clipboard and wait (timeout seconds, before emptying cliboard out)"""
@@ -338,7 +385,10 @@ def database_group_dump(kdb):
             name = val.text
         val = elem.find('./UUID')
         if val is not None and val.text is not None and val.text != "":
-            cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+            try:
+                cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+            except Exception as e:
+                print "ERROR: Invalid UUID: {}".format(e)
 
         # Find parent group if it exists and extract it's uuid as well
         pelem = elem.getparent()
@@ -346,7 +396,10 @@ def database_group_dump(kdb):
         if pelem is not None:
             val = pelem.find('./UUID')
             if val is not None and val.text is not None and val.text != "":
-                puuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+                try:
+                    puuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+                except Exception as e:
+                    print "ERROR: Invalid UUID: {}".format(e)
 
         print "{}\t{}\t{}".format(*map(map_none, [cuuid, name, puuid]))
 
@@ -359,7 +412,12 @@ def database_add_modify(kdb, keyVals):
 
     if "uuid" in keyVals:
         retuuid = keyVals['uuid']
-        encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes)
+        try:
+            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes)
+        except Exception as e:
+            print "ERROR: Invalid UUID: {}".format(e)
+            return retuuid
+
         del keyVals['uuid']
         for elem in kdb.obj_root.iterfind('.//Group/Entry'):
             val = elem.find('./UUID')
@@ -416,7 +474,10 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
 
         val = elem.find('./UUID')
         if val is not None and val.text is not None and val.text != "":
-            cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+            try:
+                cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+            except Exception as e:
+                print "ERROR: Invalid UUID: {}".format(e)
         for sel in elem.iterfind('./String'):
             key = sel.find('./Key')
             val = sel.find('./Value')
