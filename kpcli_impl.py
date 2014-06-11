@@ -17,6 +17,8 @@ import io
 import base64
 import uuid
 import datetime
+import random
+import string
 from lxml import etree
 
 # Check if we have required Python version
@@ -39,9 +41,13 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.11"
+VERSION="1.12"
 DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014'.format(VERSION)
+
+# Password generator default values (this may be configurable in the future)
+RANDOM_PASS_CHARS="{}{}-_".format(string.ascii_letters, string.digits)
+RANDOM_PASS_LENGTH=20
 
 if DEBUG and not haveReadline: print "We do NOT have readline module!"
 
@@ -268,7 +274,8 @@ if haveReadline:
         def do_modify(self, params):
             """modify <uuid> <key1> <value1> [key1 value2 [ ... ]]
             Modify existing entry fields specified by uuid.
-            Key may be one of supported fields (title, username, password, url, notes)"""
+            Key may be one of supported fields (title, username, password, url, notes).
+            You can request random password by specifying ~ instead of pass"""
             idx = params.find(" ")
             if idx == -1:
                 print "ERROR: uuid missing"
@@ -301,7 +308,8 @@ if haveReadline:
         def do_add(self, params):
             """add <group_uuid> <key1> <value1> [key1 value2 [ ... ]]
             Add new entry under group specified by group_uuid.
-            Key may be one of supported fields (title, username, password, url, notes)"""
+            Key may be one of supported fields (title, username, password, url, notes).
+            You can request random password by specifying ~ instead of pass"""
             idx = params.find(" ")
             if idx == -1:
                 print "ERROR: group_uuid missing"
@@ -333,6 +341,12 @@ if haveReadline:
 
         def do_EOF(self, line):
             return self.do_quit(line)
+
+def randomString(allowedChars, length):
+    """Generate random string of given length consisting of chars contained in the allowedChars string."""
+    rnd = random.SystemRandom()
+
+    return "".join(rnd.choice(allowedChars) for i in range(length))
 
 def copyToClipboard(text, timeout=12):
     """Function to copy given text to clipboard and wait (timeout seconds, before emptying cliboard out)"""
@@ -444,15 +458,25 @@ def database_add_modify(kdb, keyVals):
                         if val == None:
                             val = etree.Element('Value')
                             elem2.append(val)
-                        val._setText(v)
+                        if k == "password" and v == "~":
+                            randomPass = randomString(RANDOM_PASS_CHARS, RANDOM_PASS_LENGTH)
+                            print "Random password generated: {}".format(randomPass)
+                            val._setText(randomPass)
+                        else:
+                            val._setText(v)
                     # If not found, add new String element
                     if not found:
                         string = etree.Element('String')
                         key = etree.Element('Key')
                         val = etree.Element('Value')
                         key.text = km
-                        val.text = v
                         if k == "password": val.set('Protected', 'False')
+                        if k == "password" and v == "~":
+                            randomPass = randomString(RANDOM_PASS_CHARS, RANDOM_PASS_LENGTH)
+                            print "Random password generated: {}".format(randomPass)
+                            val.text = randomPass
+                        else:
+                            val.text = v
                         string.append(key)
                         string.append(val)
                         if elem2 != None: elem2.addnext(string)
@@ -497,7 +521,13 @@ def database_add_modify(kdb, keyVals):
                     km = keyMap[k]
                     string = etree.SubElement(entry, "String")
                     etree.SubElement(string, "Key")._setText(km)
-                    etree.SubElement(string, "Value")._setText(v)
+                    val = etree.SubElement(string, "Value")
+                    if k == "password" and v == "~":
+                        randomPass = randomString(RANDOM_PASS_CHARS, RANDOM_PASS_LENGTH)
+                        print "Random password generated: {}".format(randomPass)
+                        val._setText(randomPass)
+                    else:
+                        val._setText(v)
                 autoType = etree.SubElement(entry, "AutoType")
                 etree.SubElement(autoType, "Enabled")._setText("True")
                 etree.SubElement(autoType, "DataTransferObfuscation")._setText("0")
