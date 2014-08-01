@@ -41,7 +41,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.12"
+VERSION="1.13"
 DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014'.format(VERSION)
 
@@ -572,13 +572,13 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
             val = sel.find('./Value')
             if key is None or val is None: continue
 
-            if "Title" in key.text: title = val.text
-            elif "UserName" in key.text: username = val.text
-            elif "Password" in key.text:
+            if "Title" == key.text: title = val.text
+            elif "UserName" == key.text: username = val.text
+            elif "Password" == key.text:
                 origPassword = password = val.text
                 if not showPasswords: password = "".join(map(lambda x: "*", password))
-            elif "URL" in key.text: url = val.text
-            elif "Notes" in key.text: notes = val.text
+            elif "URL" == key.text: url = val.text
+            elif "Notes" == key.text: notes = val.text
 
         # Try to retrieve group name as well
         group = elem.getparent()
