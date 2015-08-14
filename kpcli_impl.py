@@ -526,11 +526,12 @@ def map_none(x):
 
 def database_group_dump(kdb):
     """Dump all the groups including their UUIDs"""
-    print "UUID\t\t\t\t\tGroup name\tParent group UUID\tNotes"
+    print "UUID\t\t\t\t\tGroup name\tParent group UUID\tNotes\tIconID"
 
     for elem in kdb.obj_root.iterfind('.//Group'):
         name = ""
         notes = ""
+        iconid = ""
         cuuid = ""
         puuid = None
 
@@ -540,6 +541,9 @@ def database_group_dump(kdb):
         val = elem.find('./Notes')
         if val is not None and val.text is not None and val.text != "":
             notes = val.text
+        val = elem.find('./IconID')
+        if val is not None and val.text is not None and val.text != "":
+            iconid = val.text
         val = elem.find('./UUID')
         if val is not None and val.text is not None and val.text != "":
             try:
@@ -558,7 +562,7 @@ def database_group_dump(kdb):
                 except Exception as e:
                     print "ERROR: Invalid UUID: {}".format(e)
 
-        print "{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, name, puuid, notes]))
+        print "{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, name, puuid, notes, iconid]))
 
 def database_add_modify_group(kdb, keyVals):
     """Add new or modify existing Group in the XML tree.
