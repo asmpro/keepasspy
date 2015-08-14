@@ -8,8 +8,10 @@
 # - Added group management (add, modify, delete)
 # - Added delete for password entries
 #
-# TODO:
+# V1.21:
 # - Ask again if exit is really desired, when Ctrl+C in detected in interactive mode
+#
+# TODO:
 # - Add ability to finely tune random password generation (~) by appending length (i.e.: ~l32) and type of
 #   chars to use (a - alpha, n - numeric, s - special (special is follwed by allowed chars, ending with 's'),
 #   i.e.: ~ans_-!#$s denoting alphanumeric chars and special chars '_-!#$')
@@ -51,7 +53,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.20"
+VERSION="1.21"
 DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014-2015'.format(VERSION)
 
@@ -988,7 +990,13 @@ try :
     if args.dopprint: print kdb.pretty_print()
     if interactive:
         options = { 'show_passwords_bool': showPasswords, 'copy_to_clipboard_str': args.copy }
-        Shell(kdba, args.file, masterPassword, args.keyfile, options).cmdloop()
+        while True:
+            try:
+                Shell(kdba, args.file, masterPassword, args.keyfile, options).cmdloop()
+            except KeyboardInterrupt:
+                print
+                continue
+            break
     else:
         filters = {}
         if args.title != None: filters['title'] = decode_input_value_and_regex(args.title)
