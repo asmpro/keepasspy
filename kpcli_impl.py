@@ -2,8 +2,18 @@
 # coding: utf-8
 #
 # This is CLI version of keepasspy.
-# Written by Uros Juvan <asmpro@gmail.com> 2014.
+# Written by Uros Juvan <asmpro@gmail.com> 2014-2015.
 # 
+# V1.20:
+# - Added group management (add, modify, delete)
+# - Added delete for password entries
+#
+# TODO:
+# - Ask again if exit is really desired, when Ctrl+C in detected in interactive mode
+# - Add ability to finely tune random password generation (~) by appending length (i.e.: ~l32) and type of
+#   chars to use (a - alpha, n - numeric, s - special (special is follwed by allowed chars, ending with 's'),
+#   i.e.: ~ans_-!#$s denoting alphanumeric chars and special chars '_-!#$')
+# - Add ability to create new kdbx files
 
 import os
 import sys
@@ -41,9 +51,9 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.13"
+VERSION="1.20"
 DEBUG=1
-VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014'.format(VERSION)
+VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014-2015'.format(VERSION)
 
 # Password generator default values (this may be configurable in the future)
 RANDOM_PASS_CHARS="{}{}-_".format(string.ascii_letters, string.digits)
@@ -105,6 +115,7 @@ if haveReadline:
         FIND_FIELDS = ['username ', 'title ', 'url ', 'uuid ', 'groupname ', 'groupuuid ']
         MODIFY_FIELDS = ['username ', 'title ', 'url ', 'password ', 'notes ']
         SET_OPTIONS = ['show_passwords_bool ', 'copy_to_clipboard_str ']
+        MODIFY_GROUP_FIELDS = ['name ', 'notes ', 'iconid ',]
 
         def __init__(self, kdba, dbFile, masterPassword, keyFile, options, completekey='tab', stdin=None, stdout=None):
             cmd.Cmd.__init__(self, completekey, stdin, stdout)
@@ -136,10 +147,101 @@ if haveReadline:
             return self.do_dump(line)
 
         def do_dumpgroups(self, line):
-            """do_dumpgroups
+            """dumpgroups
+            Synonym for groupsdump"""
+            self.do_groupsdump(line)
+
+        def do_gd(self, line):
+            self.do_groupsdump(line)
+
+        def do_groupsdump(self, line):
+            """groupsdump
             Dump all the groups, including their UUIDs.
             Usefull for add new entry command, whe group UUID is needed."""
             database_group_dump(self.kdba[0])
+
+        def do_groupadd(self, params):
+            """add <parent_group_uuid> <key1> <value1> [key1 value2 [ ... ]]
+            Add new group under group specified by group_uuid (If None, create root group if non-existent).
+            Key may be one of supported fields (name, notes, iconid).
+            default iconid is 49 (General)"""
+            idx = params.find(" ")
+            if idx == -1:
+                print "ERROR: parent_group_uuid missing"
+                return
+            uuid = params[0:idx]
+            if (uuid.startswith('"') and uuid.endswith('"')) or \
+               (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
+            keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
+            unknown = set(keyVals.keys()) - set(["name", "notes", "iconid"])
+            if len(unknown) > 0:
+                print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
+                return
+            if len(keyVals) == 0:
+                print "ERROR: At least one key/value must be specified"
+                return
+            keyVals['parent_group_uuid'] = uuid
+            retuuid = database_add_modify_group(kdba[0], keyVals)
+            if retuuid != None:
+                self.prompt = "*kpcli> "
+                print "Added new group with UUID {}".format(retuuid)
+
+        def complete_groupadd(self, text, line, begidx, endidx):
+            if not text:
+                comps = self.MODIFY_GROUP_FIELDS[:]
+            else:
+                comps = [f for f in self.MODIFY_GROUP_FIELDS if f.startswith(text)]
+
+            return comps
+
+        def do_ga(self, line):
+            """ga
+            Synonym for groupadd"""
+            self.do_groupadd(line)
+
+        def complete_ga(self, text, line, begidx, endidx):
+            return self.complete_groupadd(text, line, begidx, endidx)
+
+        def do_groupmodify(self, params):
+            """groupmodify <group_uuid> <key1> <value1> [key1 value2 [ ... ]]
+            Modify existing group fields specified by uuid.
+            Key may be one of supported fields (name, notes, iconid)."""
+            idx = params.find(" ")
+            if idx == -1:
+                print "ERROR: uuid missing"
+                return
+            uuid = params[0:idx]
+            if (uuid.startswith('"') and uuid.endswith('"')) or \
+               (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
+            keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
+            unknown = set(keyVals.keys()) - set(["name", "notes", "iconid"])
+            if len(unknown) > 0:
+                print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
+                return
+            if len(keyVals) == 0:
+                print "ERROR: At least one key/value must be specified"
+                return
+            keyVals['uuid'] = uuid
+            retuuid = database_add_modify_group(kdba[0], keyVals)
+            if retuuid != None:
+                self.prompt = "*kpcli> "
+                print "Modified group with UUID {}".format(retuuid)
+
+        def complete_groupmodify(self, text, line, begidx, endidx):
+            if not text:
+                comps = self.MODIFY_GROUP_FIELDS[:]
+            else:
+                comps = [f for f in self.MODIFY_GROUP_FIELDS if f.startswith(text)]
+
+            return comps
+
+        def do_gm(self, line):
+            """gm
+            Synonym for groupmodify"""
+            self.do_groupmodify(line)
+
+        def complete_gm(self, text, line, begidx, endidx):
+            return self.complete_groupadd(text, line, begidx, endidx)
 
         def do_pprint(self, line):
             """pprint
@@ -289,7 +391,7 @@ if haveReadline:
                 print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
                 return
             if len(keyVals) == 0:
-                print "ERROR: At least ne key/value must be specified"
+                print "ERROR: At least one key/value must be specified"
                 return
             keyVals['uuid'] = uuid
             retuuid = database_add_modify(kdba[0], keyVals)
@@ -323,7 +425,7 @@ if haveReadline:
                 print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
                 return
             if len(keyVals) == 0:
-                print "ERROR: At least ne key/value must be specified"
+                print "ERROR: At least one key/value must be specified"
                 return
             keyVals['group_uuid'] = uuid
             retuuid = database_add_modify(kdba[0], keyVals)
@@ -338,6 +440,34 @@ if haveReadline:
                 comps = [f for f in self.MODIFY_FIELDS if f.startswith(text)]
 
             return comps
+
+        def do_delete(self, params):
+            """delete <uuid>
+            Delete entry specified by UUID.
+            """
+            uuid = params
+            if (uuid.startswith('"') and uuid.endswith('"')) or \
+               (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
+            ret = database_delete(kdba[0], uuid)
+            if ret == 0:
+                self.prompt = "*kpcli> "
+                print "Successfully deleted entry with UUID {}".format(uuid)
+            else:
+                print "Error moving/deleting entry with UUID {}: {}".format(uuid, ret)
+
+        def do_groupdelete(self, params):
+            """groupdelete <uuid>
+            Delete group specified by UUID.
+            """
+            uuid = params
+            if (uuid.startswith('"') and uuid.endswith('"')) or \
+               (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
+            ret = database_delete_group(kdba[0], uuid)
+            if ret == 0:
+                self.prompt = "*kpcli> "
+                print "Successfully deleted group with UUID {}".format(uuid)
+            else:
+                print "Error moving/deleting group with UUID {}: {}".format(uuid, ret)
 
         def do_EOF(self, line):
             return self.do_quit(line)
@@ -396,16 +526,20 @@ def map_none(x):
 
 def database_group_dump(kdb):
     """Dump all the groups including their UUIDs"""
-    print "UUID\t\t\t\t\tGroup name\tParent group UUID"
+    print "UUID\t\t\t\t\tGroup name\tParent group UUID\tNotes"
 
     for elem in kdb.obj_root.iterfind('.//Group'):
         name = ""
+        notes = ""
         cuuid = ""
         puuid = None
 
         val = elem.find('./Name')
         if val is not None and val.text is not None and val.text != "":
             name = val.text
+        val = elem.find('./Notes')
+        if val is not None and val.text is not None and val.text != "":
+            notes = val.text
         val = elem.find('./UUID')
         if val is not None and val.text is not None and val.text != "":
             try:
@@ -424,7 +558,106 @@ def database_group_dump(kdb):
                 except Exception as e:
                     print "ERROR: Invalid UUID: {}".format(e)
 
-        print "{}\t{}\t{}".format(*map(map_none, [cuuid, name, puuid]))
+        print "{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, name, puuid, notes]))
+
+def database_add_modify_group(kdb, keyVals):
+    """Add new or modify existing Group in the XML tree.
+    If uuid key is present, Group is modified,
+    else if parent_group_uuid is present new group is added inside requested parent_group_uuid.
+    If parent_group_uuid is None, then create root group if one does not yet exist."""
+    retuuid = None
+    keyMap = { 'name': 'Name', 'notes': 'Notes', 'iconid': 'IconID' }
+
+    # Override iconid with '49' if not present
+    if 'iconid' not in keyVals:
+        keyVals['iconid'] = "49"
+
+    if "uuid" in keyVals:
+        retuuid = keyVals['uuid']
+        try:
+            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes)
+        except Exception as e:
+            print "ERROR: Invalid UUID: {}".format(e)
+            return None
+
+        del keyVals['uuid']
+        for elem in kdb.obj_root.iterfind('.//Group'):
+            val = elem.find('./UUID')
+            if val is not None and val.text is not None and val.text == encuuid:
+                for k, v in keyVals.iteritems():
+                    km = keyMap[k]
+                    # Try to find existing entry
+                    elem2 = elem.find("./{}".format(km))
+                    if elem2 is not None:
+                        elem2._setText(v)
+                    else:
+                        etree.SubElement(elem, km)._setText(v)
+                break
+    elif "parent_group_uuid" in keyVals:
+        if 'name' not in keyVals:
+            print "ERROR: Name missing!"
+            return retuuid
+        if 'notes' not in keyVals:
+            keyVals['notes'] = None
+        retuuid = None
+        newuuid = None
+        encnewuuid = None
+        encuuid = None
+        try:
+            if keyVals['parent_group_uuid'] != 'None':
+                encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['parent_group_uuid'])).bytes)
+            nuuid = uuid.uuid4()
+            newuuid = str(nuuid)
+            encnewuuid = base64.b64encode(nuuid.bytes)
+        except Exception as e:
+            print "ERROR: Invalid group UUID: {}".format(e)
+            return None
+
+        del keyVals['parent_group_uuid']
+
+        parent = None
+        if encuuid is None:
+            rootElem = kdb.obj_root.find('.//Root')
+            if rootElem is not None:
+                if rootElem.find('./Group') is not None:
+                    print "ERROR: Unable to add new root group, until old root is deleted!"
+                else:
+                    parent = rootElem
+                    retuuid = newuuid
+        else:
+            for elem in kdb.obj_root.iterfind('.//Group'):
+                val = elem.find('./UUID')
+                if val is not None and val.text is not None and val.text == encuuid:
+                    parent = elem
+                    retuuid = newuuid
+                    break
+
+        # Create new Group element
+        if parent is not None:
+            group = etree.SubElement(parent, "Group")
+            etree.SubElement(group, "UUID")._setText(encnewuuid)
+            for k, v in keyVals.iteritems():
+                km = keyMap[k]
+                etree.SubElement(group, km)._setText(v)
+            times = etree.SubElement(group, "Times")
+            cdt = datetime.datetime.utcnow()
+            cdtstr = cdt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            etree.SubElement(times, "CreationTime")._setText(cdtstr)
+            etree.SubElement(times, "LastModificationTime")._setText(cdtstr)
+            etree.SubElement(times, "LastAccessTime")._setText(cdtstr)
+            etree.SubElement(times, "ExpiryTime")._setText(cdtstr)
+            etree.SubElement(times, "Expires")._setText("False")
+            etree.SubElement(times, "UsageCount")._setText("0")
+            etree.SubElement(times, "LocationChanged")._setText(cdtstr)
+            etree.SubElement(group, "IsExpanded")._setText("True")
+            etree.SubElement(group, "DefaultAutoTypeSequence")
+            etree.SubElement(group, "EnableAutoType")._setText("null")
+            etree.SubElement(group, "EnableSearching")._setText("null")
+            etree.SubElement(group, "LastTopVisibleEntry")._setText("AAAAAAAAAAAAAAAAAAAAAA==")
+    else:
+        print "ERROR: At least uuid or parent_group_uuid keys should be present!"
+
+    return retuuid
 
 def database_add_modify(kdb, keyVals):
     """Add new or modify existing Entry in the XML tree.
@@ -541,6 +774,46 @@ def database_add_modify(kdb, keyVals):
         print "ERROR: At least uuid or group_uuid keys should be present!"
 
     return retuuid
+
+def database_delete(kdb, uuId):
+    """Delete given entry by uuid"""
+    try:
+        encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(uuId)).bytes)
+    except Exception as e:
+        print "ERROR: Invalid UUID: {}".format(e)
+        return 1
+
+    ret = 2
+    for elem in kdb.obj_root.iterfind('.//Group/Entry'):
+        val = elem.find('./UUID')
+        if val is not None and val.text is not None and val.text == encuuid:
+            parent = elem.getparent()
+            if parent is not None:
+                parent.remove(elem)
+            ret = 0
+            break
+
+    return ret
+
+def database_delete_group(kdb, uuId):
+    """Delete given group by uuid"""
+    try:
+        encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(uuId)).bytes)
+    except Exception as e:
+        print "ERROR: Invalid UUID: {}".format(e)
+        return 1
+
+    ret = 2
+    for elem in kdb.obj_root.iterfind('.//Group'):
+        val = elem.find('./UUID')
+        if val is not None and val.text is not None and val.text == encuuid:
+            parent = elem.getparent()
+            if parent is not None:
+                parent.remove(elem)
+            ret = 0
+            break
+
+    return ret
 
 def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard = None, copyToClipboardTimeout = None):
     """Dump the database, optionally limiting output by regexps by fields (filter).
