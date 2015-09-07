@@ -53,7 +53,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.21"
+VERSION="1.22"
 DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014-2015'.format(VERSION)
 
@@ -484,22 +484,23 @@ def copyToClipboard(text, timeout=12):
     """Function to copy given text to clipboard and wait (timeout seconds, before emptying cliboard out)"""
 
     if sys.platform == 'linux2':
-        prog = 'xclip'
+        progs = [ [ 'xclip' ], [ 'xclip', '-selection', 'clipboard' ] ]
     elif sys.platform in ('win32', 'cygwin'):
-        prog = 'clip'
+        progs = [ [ 'clip' ] ]
     elif sys.platform == 'darwin':
-        prog = 'pbcopy'
+        prog = [ [ 'pbcopy' ] ]
     else:
         print "Cannot copy to cliboard: Unknown platform: {}".format(sys.platform)
         return
 
     # Try to pipe text to prog, else print error
-    try:
-        pipe = subprocess.Popen([prog], stdin=subprocess.PIPE)
-        pipe.communicate(text)
-    except Exception as e:
-        print "Unable to copy text to clipboard: {}".format(e)
-        return
+    for prog in progs:
+        try:
+            pipe = subprocess.Popen(prog, stdin=subprocess.PIPE)
+            pipe.communicate(text)
+        except Exception as e:
+            print "Unable to copy text to clipboard: {}".format(e)
+            return
 
     # Wait for timeout seconds, outputing timeout seconds before clearing clipboard
     waitTime = 0
@@ -514,12 +515,13 @@ def copyToClipboard(text, timeout=12):
     print ""
     print "Clearing out clipboard..."
 
-    try:
-        pipe = subprocess.Popen([prog], stdin=subprocess.PIPE)
-        pipe.communicate("")
-    except Exception as e:
-        print "Unable to copy text to clipboard: {}".format(e)
-        return
+    for prog in progs:
+        try:
+            pipe = subprocess.Popen(prog, stdin=subprocess.PIPE)
+            pipe.communicate("")
+        except Exception as e:
+            print "Unable to copy text to clipboard: {}".format(e)
+            return
 
 # Print out retrieved data
 def map_none(x):
