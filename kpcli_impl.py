@@ -12,6 +12,7 @@
 # - Ask again if exit is really desired, when Ctrl+C in detected in interactive mode
 #
 # TODO:
+# - Add ability to reload database by killing process with SIGHUP
 # - Add ability to finely tune random password generation (~) by appending length (i.e.: ~l32) and type of
 #   chars to use (a - alpha, n - numeric, s - special (special is follwed by allowed chars, ending with 's'),
 #   i.e.: ~ans_-!#$s denoting alphanumeric chars and special chars '_-!#$')
