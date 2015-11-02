@@ -11,6 +11,9 @@
 # V1.21:
 # - Ask again if exit is really desired, when Ctrl+C in detected in interactive mode
 #
+# V1.23:
+# - Fixed some unicode bugs
+#
 # TODO:
 # - Add ability to reload database by killing process with SIGHUP
 # - Add ability to finely tune random password generation (~) by appending length (i.e.: ~l32) and type of
@@ -54,7 +57,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.22"
+VERSION="1.23"
 DEBUG=1
 VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014-2015'.format(VERSION)
 
@@ -527,7 +530,7 @@ def copyToClipboard(text, timeout=12):
 # Print out retrieved data
 def map_none(x):
     if x == None: return "None"
-    else: return '"{}"'.format(x)
+    else: return '"{}"'.format(x.encode("utf-8"))
 
 def database_group_dump(kdb):
     """Dump all the groups including their UUIDs"""
@@ -858,7 +861,11 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
             elif "UserName" == key.text: username = val.text
             elif "Password" == key.text:
                 origPassword = password = val.text
-                if not showPasswords: password = "".join(map(lambda x: "*", password))
+                if not showPasswords:
+                    if password is not None:
+                        password = "".join(map(lambda x: "*", password))
+                    else:
+                        password = "*"
             elif "URL" == key.text: url = val.text
             elif "Notes" == key.text: notes = val.text
 
