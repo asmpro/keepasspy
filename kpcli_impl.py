@@ -492,7 +492,7 @@ def copyToClipboard(text, timeout=12):
     elif sys.platform in ('win32', 'cygwin'):
         progs = [ [ 'clip' ] ]
     elif sys.platform == 'darwin':
-        prog = [ [ 'pbcopy' ] ]
+        progs = [ [ 'pbcopy' ] ]
     else:
         print "Cannot copy to cliboard: Unknown platform: {}".format(sys.platform)
         return
