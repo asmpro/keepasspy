@@ -14,11 +14,23 @@
 # V1.23:
 # - Fixed some unicode bugs
 #
-# TODO:
-# - Add ability to reload database by killing process with SIGHUP
+# V1.24:
+# - Added support to autocomplete group names which then convert to UUIDs for interactive add command
+#
+# V1.25:
+# - Added support to use pyreadline if readline is not available (for example in windows)
+#
+# V1.26:
+# - Added support to autocomplete entry UUIDs for find/modify/delete commands (UUIDs are hashed and update, when change (add/mod/del) commands are used)
+#
+# V1.27:
 # - Add ability to finely tune random password generation (~) by appending length (i.e.: ~l32) and type of
-#   chars to use (a - alpha, n - numeric, s - special (special is follwed by allowed chars, ending with 's'),
-#   i.e.: ~ans_-!#$s denoting alphanumeric chars and special chars '_-!#$')
+#   chars to use (a - alpha, n - numeric, s - special (special is follwed by allowed chars, ending with 's!'),
+#   i.e.: ~l32ans_-!#$s denoting 32 chars passlen consisting of alphanumeric chars and special chars '_-!#$')
+#
+# TODO:
+# - Do not permit deleting groups having entries (either entries or other groups) pointed to it
+# - Add ability to reload database by killing process with SIGHUP
 # - Add ability to create new kdbx files
 
 import os
@@ -35,6 +47,7 @@ import uuid
 import datetime
 import random
 import string
+import bisect
 from lxml import etree
 
 # Check if we have required Python version
@@ -47,7 +60,11 @@ try:
     import cmd
     haveReadline = True
 except:
-    haveReadline = False
+    try:
+        import pyreadline as readline
+        haveReadline = True
+    except:
+        haveReadline = False
 
 # This is temporary development hack.
 # Later on libkeepass (including all it's requirements should be installed
@@ -57,9 +74,9 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.23"
+VERSION="1.27"
 DEBUG=1
-VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014-2015'.format(VERSION)
+VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014-2018'.format(VERSION)
 
 # Password generator default values (this may be configurable in the future)
 RANDOM_PASS_CHARS="{}{}-_".format(string.ascii_letters, string.digits)
@@ -114,6 +131,7 @@ def parse_field_value(params, keyLower=False, regexVal=True):
 
 # If we have readline module, define class used for completing all possible commands
 # in the interactive prompt.
+
 if haveReadline:
     class Shell(cmd.Cmd):
         prompt = 'kpcli> '
@@ -130,6 +148,81 @@ if haveReadline:
             self.masterPassword = masterPassword
             self.keyFile = keyFile
             self.options = options
+
+            # Sorted entry UUIDs. None means uninitialized.
+            self.sorted_uuids_cache = None
+            # Sorted group entry UUIDs. None means uninitialized.
+            self.sorted_guuids_cache = None
+
+        def load_sorted_uuid(self):
+            if self.sorted_uuids_cache is None:
+                self.sorted_uuids_cache = []
+                # Generate new sorted_uuids_cache
+                for elem in self.kdba[0].obj_root.iterfind('.//Group/Entry'):
+                    val = elem.find('./UUID')
+                    if val is not None and val.text is not None and val.text != "":
+                        try:
+                            cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
+                            self.sorted_uuids_cache.append(cuuid)
+                        except Exception as e:
+                            print "ERROR: Invalid UUID: {}".format(e)
+                self.sorted_uuids_cache.sort()
+
+        def load_sorted_guuid(self):
+            if self.sorted_guuids_cache is None:
+                self.sorted_guuids_cache = [x['uuid'] for x in database_groups_get(self.kdba[0])]
+                self.sorted_guuids_cache.sort()
+
+        def find_sorted_uuid_common(self, sorted_uuids_cache, uuid_match=None):
+            """Find all or just all starting with given uuid_match of uuids in sorted_uuids_cache. Also generate new one if not initialized."""
+            uuids = sorted_uuids_cache
+            if uuid_match is not None:
+                #idx_start = bisect.bisect(sorted_uuids_cache, uuid_match)
+                uuids = [x for x in sorted_uuids_cache if x.startswith(uuid_match)]
+
+            return uuids
+
+        def find_sorted_uuid(self, uuid_match=None):
+            """Find all or just all starting with given uuid_match of uuids in sorted_uuids_cache. Also generate new one if not initialized."""
+            self.load_sorted_uuid()
+
+            return self.find_sorted_uuid_common(self.sorted_uuids_cache, uuid_match)
+
+        def find_sorted_guuid(self, uuid_match=None):
+            """Find all or just all starting with given uuid_match of uuids in sorted_uuids_cache. Also generate new one if not initialized."""
+            self.load_sorted_guuid()
+
+            return self.find_sorted_uuid_common(self.sorted_guuids_cache, uuid_match)
+
+        def add_sorted_uuid_common(self, sorted_uuids_cache, uuid):
+            """Add given uuid to sorted list"""
+            if uuid is not None: bisect.insort(sorted_uuids_cache, uuid)
+
+        def add_sorted_uuid(self, uuid):
+            """Add given uuid to sorted list"""
+            self.load_sorted_uuid()
+            self.add_sorted_uuid_common(self.sorted_uuids_cache, uuid)
+
+        def add_sorted_guuid(self, uuid):
+            """Add given uuid to sorted list"""
+            self.load_sorted_guuid()
+            self.add_sorted_uuid_common(self.sorted_guuids_cache, uuid)
+
+        def del_sorted_uuid_common(self, sorted_uuids_cache, uuid):
+            """Delete given uuid from sorted list"""
+            try:
+                if sorted_uuids_cache is not None and uuid is not None: sorted_uuids_cache.remove(uuid)
+            except:
+                # We do not care if UUID is not in cache and thus cannot be deleted
+                pass
+
+        def del_sorted_uuid(self, uuid):
+            """Delete given uuid from sorted list"""
+            self.del_sorted_uuid_common(self.sorted_uuids_cache, uuid)
+
+        def del_sorted_guuid(self, uuid):
+            """Delete given uuid from sorted list"""
+            self.del_sorted_uuid_common(self.sorted_guuids_cache, uuid)
 
         def do_version(self, line):
             """version
@@ -179,7 +272,7 @@ if haveReadline:
             if (uuid.startswith('"') and uuid.endswith('"')) or \
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
-            unknown = set(keyVals.keys()) - set(["name", "notes", "iconid"])
+            unknown = set(keyVals.keys()) - set(map(lambda x: x.strip(), self.MODIFY_GROUP_FIELDS))
             if len(unknown) > 0:
                 print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
                 return
@@ -189,6 +282,7 @@ if haveReadline:
             keyVals['parent_group_uuid'] = uuid
             retuuid = database_add_modify_group(kdba[0], keyVals)
             if retuuid != None:
+                self.add_sorted_guuid(retuuid)
                 self.prompt = "*kpcli> "
                 print "Added new group with UUID {}".format(retuuid)
 
@@ -220,7 +314,7 @@ if haveReadline:
             if (uuid.startswith('"') and uuid.endswith('"')) or \
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
-            unknown = set(keyVals.keys()) - set(["name", "notes", "iconid"])
+            unknown = set(keyVals.keys()) - set(map(lambda x: x.strip(), self.MODIFY_GROUP_FIELDS))
             if len(unknown) > 0:
                 print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
                 return
@@ -234,10 +328,16 @@ if haveReadline:
                 print "Modified group with UUID {}".format(retuuid)
 
         def complete_groupmodify(self, text, line, begidx, endidx):
+            uuids = []
+            if len([c for c in line if c.isspace()]) == 1:
+                uuid_match = text
+                if not uuid_match: uuid_match = None
+                uuids = self.find_sorted_guuid(uuid_match)
+
             if not text:
-                comps = self.MODIFY_GROUP_FIELDS[:]
+                comps = uuids + self.MODIFY_GROUP_FIELDS[:]
             else:
-                comps = [f for f in self.MODIFY_GROUP_FIELDS if f.startswith(text)]
+                comps = uuids + [f for f in self.MODIFY_GROUP_FIELDS if f.startswith(text)]
 
             return comps
 
@@ -259,7 +359,8 @@ if haveReadline:
             Search database by specified field using regular expression. Synonym is f command."
               Supported fields: title, username, url, uuid, groupname, groupuuid"""
             filters = parse_field_value(params, keyLower=True)
-            unknown = set(filters.keys()) - set(["title", "username", "uuid", "url", "groupname", "groupuuid"])
+            #print("\nfilters={}".format(filters))
+            unknown = set(filters.keys()) - set(map(lambda x: x.strip(),self.FIND_FIELDS))
             if len(unknown) > 0:
                 print "WARNING: Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
             database_dump(kdba[0], self.options['show_passwords_bool'], filters, self.options['copy_to_clipboard_str'])
@@ -268,10 +369,17 @@ if haveReadline:
             return self.do_find(params)
 
         def complete_find(self, text, line, begidx, endidx):
+            #print("\ntext={}, line={}, begidx={}, endidx={}".format(text,line,begidx,endidx))
+            uuid_match = text
+            if not uuid_match: uuid_match = None
+            uuids = []
+            if re.search('\s+uuid\s+[0-9a-f\-]*$', line, re.I) is not None: uuids = self.find_sorted_uuid(uuid_match)
+            if re.search('\s+groupuuid\s+[0-9a-f\-]*$', line, re.I) is not None: uuids = self.find_sorted_guuid(uuid_match)
+
             if not text:
-                comps = self.FIND_FIELDS[:]
+                comps = uuids + self.FIND_FIELDS[:]
             else:
-                comps = [f for f in self.FIND_FIELDS if f.startswith(text)]
+                comps = uuids + [f for f in self.FIND_FIELDS if f.startswith(text)]
 
             return comps
 
@@ -296,6 +404,8 @@ if haveReadline:
                 cls = kp.get_kdb_reader(signature)
                 self.kdba[0] = cls(stream, password=self.masterPassword, keyfile=self.keyFile)
                 self.prompt = "kpcli> "
+                self.sorted_uuids_cache = None
+                self.sorted_guuids_cache = None
             except Exception as e:
                 print "ERROR: Unable to reload kdbX file {}: {}".format(self.dbFile, e)
             finally:
@@ -392,7 +502,7 @@ if haveReadline:
             if (uuid.startswith('"') and uuid.endswith('"')) or \
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
-            unknown = set(keyVals.keys()) - set(["title", "username", "password", "url", "notes"])
+            unknown = set(keyVals.keys()) - set(map(lambda x: x.strip(), self.MODIFY_FIELDS))
             if len(unknown) > 0:
                 print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
                 return
@@ -406,15 +516,21 @@ if haveReadline:
                 print "Modified UUID {}".format(retuuid)
 
         def complete_modify(self, text, line, begidx, endidx):
+            uuids = []
+            if len([c for c in line if c.isspace()]) == 1:
+                uuid_match = text
+                if not uuid_match: uuid_match = None
+                uuids = self.find_sorted_uuid(uuid_match)
+
             if not text:
-                comps = self.MODIFY_FIELDS[:]
+                comps = uuids + self.MODIFY_FIELDS[:]
             else:
-                comps = [f for f in self.MODIFY_FIELDS if f.startswith(text)]
+                comps = uuids + [f for f in self.MODIFY_FIELDS if f.startswith(text)]
 
             return comps
 
         def do_add(self, params):
-            """add <group_uuid> <key1> <value1> [key1 value2 [ ... ]]
+            """add <group_uuid_or_group_name> <key1> <value1> [key1 value2 [ ... ]]
             Add new entry under group specified by group_uuid.
             Key may be one of supported fields (title, username, password, url, notes).
             You can request random password by specifying ~ instead of pass"""
@@ -425,8 +541,15 @@ if haveReadline:
             uuid = params[0:idx]
             if (uuid.startswith('"') and uuid.endswith('"')) or \
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
+            # Check if uuid is actually just group name (list all groups and check
+            #  if any of names matches and if it does replace it with actual UUID)
+            groups = database_groups_get(kdba[0])
+            matched_groups = [x for x in groups if x['name'] == uuid]
+            # If there are mulitple matches, first is used
+            if len(matched_groups) > 0:
+                uuid = matched_groups[0]['uuid']
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
-            unknown = set(keyVals.keys()) - set(["title", "username", "password", "url", "notes"])
+            unknown = set(keyVals.keys()) - set(map(lambda x: x.strip(), self.MODIFY_FIELDS))
             if len(unknown) > 0:
                 print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
                 return
@@ -436,14 +559,22 @@ if haveReadline:
             keyVals['group_uuid'] = uuid
             retuuid = database_add_modify(kdba[0], keyVals)
             if retuuid != None:
+                self.add_sorted_uuid(retuuid)
                 self.prompt = "*kpcli> "
                 print "Added new entry with UUID {}".format(retuuid)
 
         def complete_add(self, text, line, begidx, endidx):
+            fields = self.MODIFY_FIELDS[:]
+            groups = database_groups_get(kdba[0])
+            # Only show group names if we find only one space in line
+            if len([c for c in line if c.isspace()]) == 1:
+                fields = [x['name'] for x in groups]
+            #print("text={}, line={}, begidx={}, endidx={}".format(text,line,begidx,endidx))
+            #!!!
             if not text:
-                comps = self.MODIFY_FIELDS[:]
+                comps = fields
             else:
-                comps = [f for f in self.MODIFY_FIELDS if f.startswith(text)]
+                comps = [f for f in fields if f.startswith(text)]
 
             return comps
 
@@ -456,10 +587,18 @@ if haveReadline:
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             ret = database_delete(kdba[0], uuid)
             if ret == 0:
+                self.del_sorted_uuid(uuid)
                 self.prompt = "*kpcli> "
                 print "Successfully deleted entry with UUID {}".format(uuid)
             else:
                 print "Error moving/deleting entry with UUID {}: {}".format(uuid, ret)
+
+        def complete_delete(self, text, line, begidx, endidx):
+            uuid_match = text
+            if not uuid_match: uuid_match = None
+            uuids = self.find_sorted_uuid(uuid_match)
+
+            return uuids
 
         def do_groupdelete(self, params):
             """groupdelete <uuid>
@@ -470,10 +609,18 @@ if haveReadline:
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             ret = database_delete_group(kdba[0], uuid)
             if ret == 0:
+                self.del_sorted_guuid(uuid)
                 self.prompt = "*kpcli> "
                 print "Successfully deleted group with UUID {}".format(uuid)
             else:
                 print "Error moving/deleting group with UUID {}: {}".format(uuid, ret)
+
+        def complete_groupdelete(self, text, line, begidx, endidx):
+            uuid_match = text
+            if not uuid_match: uuid_match = None
+            uuids = self.find_sorted_guuid(uuid_match)
+
+            return uuids
 
         def do_EOF(self, line):
             return self.do_quit(line)
@@ -532,10 +679,10 @@ def map_none(x):
     if x == None: return "None"
     else: return '"{}"'.format(x.encode("utf-8"))
 
-def database_group_dump(kdb):
-    """Dump all the groups including their UUIDs"""
-    print "UUID\t\t\t\t\tGroup name\tParent group UUID\tNotes\tIconID"
-
+def database_groups_get(kdb):
+    """Retrieve list of groups and return it"""
+    groups = []
+    
     for elem in kdb.obj_root.iterfind('.//Group'):
         name = ""
         notes = ""
@@ -569,8 +716,24 @@ def database_group_dump(kdb):
                     puuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
                 except Exception as e:
                     print "ERROR: Invalid UUID: {}".format(e)
+                    
+        groups.append({
+            "name": name,
+            "uuid": cuuid,
+            "notes": notes,
+            "iconid": iconid,
+            "puuid": puuid,
+        })
 
-        print "{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, name, puuid, notes, iconid]))
+    return groups
+
+def database_group_dump(kdb):
+    """Dump all the groups including their UUIDs"""
+    print "UUID\t\t\t\t\tGroup name\tParent group UUID\tNotes\tIconID"
+
+    for group in database_groups_get(kdb):
+        print "{}\t{}\t{}\t{}\t{}".format(*map(map_none,
+            [group['uuid'], group['name'], group['puuid'], group['notes'], group['iconid']]))
 
 def database_add_modify_group(kdb, keyVals):
     """Add new or modify existing Group in the XML tree.
@@ -671,6 +834,49 @@ def database_add_modify_group(kdb, keyVals):
 
     return retuuid
 
+def decode_random_pass_rule(rule):
+    """Decode random password rule according to this:
+       chars to use (a - alpha, n - numeric, s - special (special is follwed by allowed chars, ending with 's!'),
+       i.e.: ~l32ans_-!#$s! denoting 32 chars passlen consisting of alphanumeric chars and special chars '_-!#$')
+    """
+    if rule == "~": return RANDOM_PASS_CHARS, RANDOM_PASS_LENGTH
+
+    state = 0
+    decoded_chars = ""
+    decoded_length = RANDOM_PASS_LENGTH
+    idx = -1
+    skip = 0
+    length_digits = ""
+    for c in rule:
+        idx += 1
+        # This is used just because Python does not support label/goto
+        while True:
+            if state == 0:
+                if c == 'l': state = 3
+                elif c == 'a': decoded_chars += string.ascii_letters
+                elif c == 'n': decoded_chars += string.digits
+                elif c == 's': state = 1
+            elif state == 1:
+                if rule[idx:idx+2] == 's!':
+                    skip = 1
+                    state = 2
+                else: decoded_chars += c
+            elif state == 2:
+                skip -= 1
+                if skip == 0: state = 0
+            elif state == 3:
+                # Find all the following digits
+                if c in string.digits: length_digits += c
+                else:
+                    state = 0
+                    continue
+            break
+
+    if length_digits != "": decoded_length = int(length_digits)
+    if decoded_chars == "": decoded_chars = RANDOM_PASS_CHARS
+
+    return decoded_chars, decoded_length
+
 def database_add_modify(kdb, keyVals):
     """Add new or modify existing Entry in the XML tree.
     If uuid key is present, entry is modified,
@@ -703,8 +909,9 @@ def database_add_modify(kdb, keyVals):
                         if val == None:
                             val = etree.Element('Value')
                             elem2.append(val)
-                        if k == "password" and v == "~":
-                            randomPass = randomString(RANDOM_PASS_CHARS, RANDOM_PASS_LENGTH)
+                        if k == "password" and v.startswith("~"):
+                            randomPassChars, randomPassLength = decode_random_pass_rule(v)
+                            randomPass = randomString(randomPassChars, randomPassLength)
                             print "Random password generated: {}".format(randomPass)
                             val._setText(randomPass)
                         else:
@@ -767,8 +974,9 @@ def database_add_modify(kdb, keyVals):
                     string = etree.SubElement(entry, "String")
                     etree.SubElement(string, "Key")._setText(km)
                     val = etree.SubElement(string, "Value")
-                    if k == "password" and v == "~":
-                        randomPass = randomString(RANDOM_PASS_CHARS, RANDOM_PASS_LENGTH)
+                    if k == "password" and v.startswith("~"):
+                        randomPassChars, randomPassLength = decode_random_pass_rule(v)
+                        randomPass = randomString(randomPassChars, randomPassLength)
                         print "Random password generated: {}".format(randomPass)
                         val._setText(randomPass)
                     else:
