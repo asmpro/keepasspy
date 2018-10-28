@@ -493,7 +493,10 @@ if haveReadline:
             """modify <uuid> <key1> <value1> [key1 value2 [ ... ]]
             Modify existing entry fields specified by uuid.
             Key may be one of supported fields (title, username, password, url, notes).
-            You can request random password by specifying ~ instead of pass"""
+            You can request random password by specifying ~ instead of pass:
+                chars to use (a - alpha, n - numeric, s - special (special is follwed by allowed chars, ending with 's!'),
+                i.e.: ~l32ans_-!#$s! denoting 32 chars passlen consisting of alphanumeric chars and special chars '_-!#$')
+            """
             idx = params.find(" ")
             if idx == -1:
                 print "ERROR: uuid missing"
@@ -533,7 +536,10 @@ if haveReadline:
             """add <group_uuid_or_group_name> <key1> <value1> [key1 value2 [ ... ]]
             Add new entry under group specified by group_uuid.
             Key may be one of supported fields (title, username, password, url, notes).
-            You can request random password by specifying ~ instead of pass"""
+            You can request random password by specifying ~ instead of pass:
+                chars to use (a - alpha, n - numeric, s - special (special is follwed by allowed chars, ending with 's!'),
+                i.e.: ~l32ans_-!#$s! denoting 32 chars passlen consisting of alphanumeric chars and special chars '_-!#$')
+            """
             idx = params.find(" ")
             if idx == -1:
                 print "ERROR: group_uuid missing"
