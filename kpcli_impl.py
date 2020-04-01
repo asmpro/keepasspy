@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding: utf-8
 #
 # This is CLI version of keepasspy.
@@ -51,8 +51,8 @@ import bisect
 from lxml import etree
 
 # Check if we have required Python version
-if sys.hexversion < 0x02070000:
-    sys.exit("Python 2.7 is required!")
+if sys.hexversion < 0x03000000:
+    sys.exit("Python 3.0 is required!")
 
 # If available import readline (interactivity depends on it)
 try:
@@ -74,15 +74,15 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", 
 import libkeepass as kp
 
 # Program version
-VERSION="1.27"
+VERSION="3.00"
 DEBUG=1
-VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014-2018'.format(VERSION)
+VERSION_STR='kpcli V{}, written by Uros Juvan <asmpro@gmail.com> 2014-2020'.format(VERSION)
 
 # Password generator default values (this may be configurable in the future)
 RANDOM_PASS_CHARS="{}{}-_".format(string.ascii_letters, string.digits)
 RANDOM_PASS_LENGTH=20
 
-if DEBUG and not haveReadline: print "We do NOT have readline module!"
+if DEBUG and not haveReadline: print("We do NOT have readline module!")
 
 def parse_field_value(params, keyLower=False, regexVal=True):
     """Parse "field value" params and return dict, where fields are keys, and value values.
@@ -165,7 +165,7 @@ if haveReadline:
                             cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
                             self.sorted_uuids_cache.append(cuuid)
                         except Exception as e:
-                            print "ERROR: Invalid UUID: {}".format(e)
+                            print("ERROR: Invalid UUID: {}".format(e))
                 self.sorted_uuids_cache.sort()
 
         def load_sorted_guuid(self):
@@ -227,7 +227,7 @@ if haveReadline:
         def do_version(self, line):
             """version
             Show program name, version and author."""
-            print VERSION_STR
+            print(VERSION_STR)
 
         def do_quit(self, line):
             """quit
@@ -235,6 +235,9 @@ if haveReadline:
             return True
 
         def do_q(self, line):
+            """q
+            Synonym for quit
+            """
             return self.do_quit(line)
 
         def do_dump(self, line):
@@ -243,6 +246,9 @@ if haveReadline:
             database_dump(self.kdba[0], self.options['show_passwords_bool'], None, options['copy_to_clipboard_str'])
 
         def do_d(self, line):
+            """d
+            Synonym for delete
+            """
             return self.do_dump(line)
 
         def do_dumpgroups(self, line):
@@ -251,6 +257,9 @@ if haveReadline:
             self.do_groupsdump(line)
 
         def do_gd(self, line):
+            """gd
+            Synonym for groupsdump
+            """
             self.do_groupsdump(line)
 
         def do_groupsdump(self, line):
@@ -266,25 +275,25 @@ if haveReadline:
             default iconid is 49 (General)"""
             idx = params.find(" ")
             if idx == -1:
-                print "ERROR: parent_group_uuid missing"
+                print("ERROR: parent_group_uuid missing")
                 return
             uuid = params[0:idx]
             if (uuid.startswith('"') and uuid.endswith('"')) or \
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
-            unknown = set(keyVals.keys()) - set(map(lambda x: x.strip(), self.MODIFY_GROUP_FIELDS))
+            unknown = set(keyVals.keys()) - set([x.strip() for x in self.MODIFY_GROUP_FIELDS])
             if len(unknown) > 0:
-                print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
+                print("ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown)))
                 return
             if len(keyVals) == 0:
-                print "ERROR: At least one key/value must be specified"
+                print("ERROR: At least one key/value must be specified")
                 return
             keyVals['parent_group_uuid'] = uuid
             retuuid = database_add_modify_group(kdba[0], keyVals)
             if retuuid != None:
                 self.add_sorted_guuid(retuuid)
                 self.prompt = "*kpcli> "
-                print "Added new group with UUID {}".format(retuuid)
+                print("Added new group with UUID {}".format(retuuid))
 
         def complete_groupadd(self, text, line, begidx, endidx):
             if not text:
@@ -308,24 +317,24 @@ if haveReadline:
             Key may be one of supported fields (name, notes, iconid)."""
             idx = params.find(" ")
             if idx == -1:
-                print "ERROR: uuid missing"
+                print("ERROR: uuid missing")
                 return
             uuid = params[0:idx]
             if (uuid.startswith('"') and uuid.endswith('"')) or \
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
-            unknown = set(keyVals.keys()) - set(map(lambda x: x.strip(), self.MODIFY_GROUP_FIELDS))
+            unknown = set(keyVals.keys()) - set([x.strip() for x in self.MODIFY_GROUP_FIELDS])
             if len(unknown) > 0:
-                print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
+                print("ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown)))
                 return
             if len(keyVals) == 0:
-                print "ERROR: At least one key/value must be specified"
+                print("ERROR: At least one key/value must be specified")
                 return
             keyVals['uuid'] = uuid
             retuuid = database_add_modify_group(kdba[0], keyVals)
             if retuuid != None:
                 self.prompt = "*kpcli> "
-                print "Modified group with UUID {}".format(retuuid)
+                print("Modified group with UUID {}".format(retuuid))
 
         def complete_groupmodify(self, text, line, begidx, endidx):
             uuids = []
@@ -352,7 +361,7 @@ if haveReadline:
         def do_pprint(self, line):
             """pprint
             Pretty print out database to stdout"""
-            print kdba[0].pretty_print()
+            print(kdba[0].pretty_print())
 
         def do_find(self, params):
             """find <field1> <regex1> [<field2> <regex2> ... ]
@@ -360,12 +369,15 @@ if haveReadline:
               Supported fields: title, username, url, uuid, groupname, groupuuid"""
             filters = parse_field_value(params, keyLower=True)
             #print("\nfilters={}".format(filters))
-            unknown = set(filters.keys()) - set(map(lambda x: x.strip(),self.FIND_FIELDS))
+            unknown = set(filters.keys()) - set([x.strip() for x in self.FIND_FIELDS])
             if len(unknown) > 0:
-                print "WARNING: Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown))
+                print("WARNING: Some invalid/unsupported field names have been used ({}) and will be ignored".format(", ".join(unknown)))
             database_dump(kdba[0], self.options['show_passwords_bool'], filters, self.options['copy_to_clipboard_str'])
 
         def do_f(self, params):
+            """f
+            Synonym for find
+            """
             return self.do_find(params)
 
         def complete_find(self, text, line, begidx, endidx):
@@ -407,7 +419,7 @@ if haveReadline:
                 self.sorted_uuids_cache = None
                 self.sorted_guuids_cache = None
             except Exception as e:
-                print "ERROR: Unable to reload kdbX file {}: {}".format(self.dbFile, e)
+                print("ERROR: Unable to reload kdbX file {}: {}".format(self.dbFile, e))
             finally:
                 if stream != None: stream.close()
 
@@ -416,16 +428,16 @@ if haveReadline:
             Print out all possible options and associated values (or just one if specified as argument)"""
             paramsa = params.split()
             if len(paramsa) == 0:
-                for k, v in self.options.iteritems():
-                    print "{}\t{}".format(k, v)
+                for k, v in self.options.items():
+                    print("{}\t{}".format(k, v))
             else:
-                if self.options.has_key(paramsa[0]):
-                    print "{}\t{}".format(paramsa[0], self.options[paramsa[0]])
+                if paramsa[0] in self.options:
+                    print("{}\t{}".format(paramsa[0], self.options[paramsa[0]]))
 
             # Also show read only options (dbFile and keyFile locations)
-            print "\nRead Only options:"
-            print "dbFile\t{}".format(self.dbFile)
-            print "keyFile\t{}".format(self.keyFile)
+            print("\nRead Only options:")
+            print("dbFile\t{}".format(self.dbFile))
+            print("keyFile\t{}".format(self.keyFile))
 
         def complete_get(self, text, line, begidx, endidx):
             if not text:
@@ -447,7 +459,7 @@ if haveReadline:
             elif len(paramsa) == 1: value = None
             else: value = paramsa[1]
 
-            if self.options.has_key(paramsa[0]):
+            if paramsa[0] in self.options:
                 if paramsa[0].endswith("_bool"):
                     if value != None and (value == "0" or value.lower() == "false"): value = None
                     self.options[paramsa[0]] = bool(value)
@@ -487,7 +499,8 @@ if haveReadline:
                     self.kdba[0].unprotect()
                     self.prompt = "kpcli> "
             except Exception as e:
-                print "ERROR: Unable to write back file {}: {}".format(self.dbFile, e)
+                print("ERROR: Unable to write back file {}: {}".format(self.dbFile, e))
+                raise
 
         def do_modify(self, params):
             """modify <uuid> <key1> <value1> [key1 value2 [ ... ]]
@@ -499,24 +512,24 @@ if haveReadline:
             """
             idx = params.find(" ")
             if idx == -1:
-                print "ERROR: uuid missing"
+                print("ERROR: uuid missing")
                 return
             uuid = params[0:idx]
             if (uuid.startswith('"') and uuid.endswith('"')) or \
                (uuid.startswith("'") and uuid.endswith("'")): uuid = uuid[1:-1]
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
-            unknown = set(keyVals.keys()) - set(map(lambda x: x.strip(), self.MODIFY_FIELDS))
+            unknown = set(keyVals.keys()) - set([x.strip() for x in self.MODIFY_FIELDS])
             if len(unknown) > 0:
-                print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
+                print("ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown)))
                 return
             if len(keyVals) == 0:
-                print "ERROR: At least one key/value must be specified"
+                print("ERROR: At least one key/value must be specified")
                 return
             keyVals['uuid'] = uuid
             retuuid = database_add_modify(kdba[0], keyVals)
             if retuuid != None:
                 self.prompt = "*kpcli> "
-                print "Modified UUID {}".format(retuuid)
+                print("Modified UUID {}".format(retuuid))
 
         def complete_modify(self, text, line, begidx, endidx):
             uuids = []
@@ -542,7 +555,7 @@ if haveReadline:
             """
             idx = params.find(" ")
             if idx == -1:
-                print "ERROR: group_uuid missing"
+                print("ERROR: group_uuid missing")
                 return
             uuid = params[0:idx]
             if (uuid.startswith('"') and uuid.endswith('"')) or \
@@ -551,23 +564,25 @@ if haveReadline:
             #  if any of names matches and if it does replace it with actual UUID)
             groups = database_groups_get(kdba[0])
             matched_groups = [x for x in groups if x['name'] == uuid]
+            # print("groups={}, uuid={}, matched_groups={}".format(groups, uuid, matched_groups))
             # If there are mulitple matches, first is used
             if len(matched_groups) > 0:
                 uuid = matched_groups[0]['uuid']
             keyVals = parse_field_value(params[idx:].strip(), keyLower=True, regexVal=False)
-            unknown = set(keyVals.keys()) - set(map(lambda x: x.strip(), self.MODIFY_FIELDS))
+            # print("keyVals={}".format(keyVals))
+            unknown = set(keyVals.keys()) - set([x.strip() for x in self.MODIFY_FIELDS])
             if len(unknown) > 0:
-                print "ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown))
+                print("ERROR: Some invalid/unsupported keys have been used ({})".format(", ".join(unknown)))
                 return
             if len(keyVals) == 0:
-                print "ERROR: At least one key/value must be specified"
+                print("ERROR: At least one key/value must be specified")
                 return
             keyVals['group_uuid'] = uuid
             retuuid = database_add_modify(kdba[0], keyVals)
             if retuuid != None:
                 self.add_sorted_uuid(retuuid)
                 self.prompt = "*kpcli> "
-                print "Added new entry with UUID {}".format(retuuid)
+                print("Added new entry with UUID {}".format(retuuid))
 
         def complete_add(self, text, line, begidx, endidx):
             fields = self.MODIFY_FIELDS[:]
@@ -595,9 +610,9 @@ if haveReadline:
             if ret == 0:
                 self.del_sorted_uuid(uuid)
                 self.prompt = "*kpcli> "
-                print "Successfully deleted entry with UUID {}".format(uuid)
+                print("Successfully deleted entry with UUID {}".format(uuid))
             else:
-                print "Error moving/deleting entry with UUID {}: {}".format(uuid, ret)
+                print("Error moving/deleting entry with UUID {}: {}".format(uuid, ret))
 
         def complete_delete(self, text, line, begidx, endidx):
             uuid_match = text
@@ -617,9 +632,9 @@ if haveReadline:
             if ret == 0:
                 self.del_sorted_guuid(uuid)
                 self.prompt = "*kpcli> "
-                print "Successfully deleted group with UUID {}".format(uuid)
+                print("Successfully deleted group with UUID {}".format(uuid))
             else:
-                print "Error moving/deleting group with UUID {}: {}".format(uuid, ret)
+                print("Error moving/deleting group with UUID {}: {}".format(uuid, ret))
 
         def complete_groupdelete(self, text, line, begidx, endidx):
             uuid_match = text
@@ -629,6 +644,9 @@ if haveReadline:
             return uuids
 
         def do_EOF(self, line):
+            """EOF
+            Ctrl-D or Ctrl-Z on Windows quits the program
+            """
             return self.do_quit(line)
 
 def randomString(allowedChars, length):
@@ -647,7 +665,7 @@ def copyToClipboard(text, timeout=12):
     elif sys.platform == 'darwin':
         progs = [ [ 'pbcopy' ] ]
     else:
-        print "Cannot copy to cliboard: Unknown platform: {}".format(sys.platform)
+        print("Cannot copy to cliboard: Unknown platform: {}".format(sys.platform))
         return
 
     # Try to pipe text to prog, else print error
@@ -656,34 +674,34 @@ def copyToClipboard(text, timeout=12):
             pipe = subprocess.Popen(prog, stdin=subprocess.PIPE)
             pipe.communicate(text)
         except Exception as e:
-            print "Unable to copy text to clipboard: {}".format(e)
+            print("Unable to copy text to clipboard: {}".format(e))
             return
 
     # Wait for timeout seconds, outputing timeout seconds before clearing clipboard
     waitTime = 0
     try:
         while waitTime < timeout:
-            print "\r{}s".format(waitTime + 1),
+            print("\r{}s".format(waitTime + 1), end=' ')
             sys.stdout.flush()
             waitTime += 1
             time.sleep(1)
     except KeyboardInterrupt:
         pass
-    print ""
-    print "Clearing out clipboard..."
+    print("")
+    print("Clearing out clipboard...")
 
     for prog in progs:
         try:
             pipe = subprocess.Popen(prog, stdin=subprocess.PIPE)
             pipe.communicate("")
         except Exception as e:
-            print "Unable to copy text to clipboard: {}".format(e)
+            print("Unable to copy text to clipboard: {}".format(e))
             return
 
 # Print out retrieved data
 def map_none(x):
     if x == None: return "None"
-    else: return '"{}"'.format(x.encode("utf-8"))
+    else: return '"{}"'.format(x)
 
 def database_groups_get(kdb):
     """Retrieve list of groups and return it"""
@@ -710,7 +728,7 @@ def database_groups_get(kdb):
             try:
                 cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
             except Exception as e:
-                print "ERROR: Invalid UUID: {}".format(e)
+                print("ERROR: Invalid UUID: {}".format(e))
 
         # Find parent group if it exists and extract it's uuid as well
         pelem = elem.getparent()
@@ -721,7 +739,7 @@ def database_groups_get(kdb):
                 try:
                     puuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
                 except Exception as e:
-                    print "ERROR: Invalid UUID: {}".format(e)
+                    print("ERROR: Invalid UUID: {}".format(e))
                     
         groups.append({
             "name": name,
@@ -735,11 +753,11 @@ def database_groups_get(kdb):
 
 def database_group_dump(kdb):
     """Dump all the groups including their UUIDs"""
-    print "UUID\t\t\t\t\tGroup name\tParent group UUID\tNotes\tIconID"
+    print("UUID\t\t\t\t\tGroup name\tParent group UUID\tNotes\tIconID")
 
     for group in database_groups_get(kdb):
-        print "{}\t{}\t{}\t{}\t{}".format(*map(map_none,
-            [group['uuid'], group['name'], group['puuid'], group['notes'], group['iconid']]))
+        print("{}\t{}\t{}\t{}\t{}".format(*list(map(map_none,
+            [group['uuid'], group['name'], group['puuid'], group['notes'], group['iconid']]))))
 
 def database_add_modify_group(kdb, keyVals):
     """Add new or modify existing Group in the XML tree.
@@ -756,16 +774,16 @@ def database_add_modify_group(kdb, keyVals):
     if "uuid" in keyVals:
         retuuid = keyVals['uuid']
         try:
-            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes)
+            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes).decode()
         except Exception as e:
-            print "ERROR: Invalid UUID: {}".format(e)
+            print("ERROR: Invalid UUID: {}".format(e))
             return None
 
         del keyVals['uuid']
         for elem in kdb.obj_root.iterfind('.//Group'):
             val = elem.find('./UUID')
             if val is not None and val.text is not None and val.text == encuuid:
-                for k, v in keyVals.iteritems():
+                for k, v in keyVals.items():
                     km = keyMap[k]
                     # Try to find existing entry
                     elem2 = elem.find("./{}".format(km))
@@ -776,7 +794,7 @@ def database_add_modify_group(kdb, keyVals):
                 break
     elif "parent_group_uuid" in keyVals:
         if 'name' not in keyVals:
-            print "ERROR: Name missing!"
+            print("ERROR: Name missing!")
             return retuuid
         if 'notes' not in keyVals:
             keyVals['notes'] = None
@@ -786,12 +804,12 @@ def database_add_modify_group(kdb, keyVals):
         encuuid = None
         try:
             if keyVals['parent_group_uuid'] != 'None':
-                encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['parent_group_uuid'])).bytes)
+                encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['parent_group_uuid'])).bytes).decode()
             nuuid = uuid.uuid4()
             newuuid = str(nuuid)
             encnewuuid = base64.b64encode(nuuid.bytes)
         except Exception as e:
-            print "ERROR: Invalid group UUID: {}".format(e)
+            print("ERROR: Invalid group UUID: {}".format(e))
             return None
 
         del keyVals['parent_group_uuid']
@@ -801,7 +819,7 @@ def database_add_modify_group(kdb, keyVals):
             rootElem = kdb.obj_root.find('.//Root')
             if rootElem is not None:
                 if rootElem.find('./Group') is not None:
-                    print "ERROR: Unable to add new root group, until old root is deleted!"
+                    print("ERROR: Unable to add new root group, until old root is deleted!")
                 else:
                     parent = rootElem
                     retuuid = newuuid
@@ -817,7 +835,7 @@ def database_add_modify_group(kdb, keyVals):
         if parent is not None:
             group = etree.SubElement(parent, "Group")
             etree.SubElement(group, "UUID")._setText(encnewuuid)
-            for k, v in keyVals.iteritems():
+            for k, v in keyVals.items():
                 km = keyMap[k]
                 etree.SubElement(group, km)._setText(v)
             times = etree.SubElement(group, "Times")
@@ -836,7 +854,7 @@ def database_add_modify_group(kdb, keyVals):
             etree.SubElement(group, "EnableSearching")._setText("null")
             etree.SubElement(group, "LastTopVisibleEntry")._setText("AAAAAAAAAAAAAAAAAAAAAA==")
     else:
-        print "ERROR: At least uuid or parent_group_uuid keys should be present!"
+        print("ERROR: At least uuid or parent_group_uuid keys should be present!")
 
     return retuuid
 
@@ -893,16 +911,16 @@ def database_add_modify(kdb, keyVals):
     if "uuid" in keyVals:
         retuuid = keyVals['uuid']
         try:
-            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes)
+            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['uuid'])).bytes).decode()
         except Exception as e:
-            print "ERROR: Invalid UUID: {}".format(e)
+            print("ERROR: Invalid UUID: {}".format(e))
             return None
 
         del keyVals['uuid']
         for elem in kdb.obj_root.iterfind('.//Group/Entry'):
             val = elem.find('./UUID')
             if val is not None and val.text is not None and val.text == encuuid:
-                for k, v in keyVals.iteritems():
+                for k, v in keyVals.items():
                     km = keyMap[k]
                     found = False
                     # Try to find existing entry
@@ -918,7 +936,7 @@ def database_add_modify(kdb, keyVals):
                         if k == "password" and v.startswith("~"):
                             randomPassChars, randomPassLength = decode_random_pass_rule(v)
                             randomPass = randomString(randomPassChars, randomPassLength)
-                            print "Random password generated: {}".format(randomPass)
+                            print("Random password generated: {}".format(randomPass))
                             val._setText(randomPass)
                         else:
                             val._setText(v)
@@ -931,7 +949,7 @@ def database_add_modify(kdb, keyVals):
                         if k == "password": val.set('Protected', 'False')
                         if k == "password" and v == "~":
                             randomPass = randomString(RANDOM_PASS_CHARS, RANDOM_PASS_LENGTH)
-                            print "Random password generated: {}".format(randomPass)
+                            print("Random password generated: {}".format(randomPass))
                             val.text = randomPass
                         else:
                             val.text = v
@@ -945,17 +963,20 @@ def database_add_modify(kdb, keyVals):
         newuuid = None
         encnewuuid = None
         try:
-            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['group_uuid'])).bytes)
+            encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(keyVals['group_uuid'])).bytes).decode()
             nuuid = uuid.uuid4()
             newuuid = str(nuuid)
             encnewuuid = base64.b64encode(nuuid.bytes)
         except Exception as e:
-            print "ERROR: Invalid group UUID: {}".format(e)
+            print("ERROR: Invalid group UUID: {}".format(e))
             return None
 
         del keyVals['group_uuid']
+        # print("Searching for .//Group elements for enc UUID {}".format(encuuid))
         for elem in kdb.obj_root.iterfind('.//Group'):
+            # print("Searching for ./UUID elements")
             val = elem.find('./UUID')
+            # print("type(val.text)={}, val.text='{}'".format(type(val.text), val.text))
             if val is not None and val.text is not None and val.text == encuuid:
                 # Create new Entry under this Group node
                 entry = etree.SubElement(elem, "Entry")
@@ -975,7 +996,7 @@ def database_add_modify(kdb, keyVals):
                 etree.SubElement(times, "Expires")._setText("False")
                 etree.SubElement(times, "UsageCount")._setText("0")
                 etree.SubElement(times, "LocationChanged")._setText(cdtstr)
-                for k, v in keyVals.iteritems():
+                for k, v in keyVals.items():
                     km = keyMap[k]
                     string = etree.SubElement(entry, "String")
                     etree.SubElement(string, "Key")._setText(km)
@@ -983,7 +1004,7 @@ def database_add_modify(kdb, keyVals):
                     if k == "password" and v.startswith("~"):
                         randomPassChars, randomPassLength = decode_random_pass_rule(v)
                         randomPass = randomString(randomPassChars, randomPassLength)
-                        print "Random password generated: {}".format(randomPass)
+                        print("Random password generated: {}".format(randomPass))
                         val._setText(randomPass)
                     else:
                         val._setText(v)
@@ -997,16 +1018,16 @@ def database_add_modify(kdb, keyVals):
                 retuuid = newuuid
                 break
     else:
-        print "ERROR: At least uuid or group_uuid keys should be present!"
+        print("ERROR: At least uuid or group_uuid keys should be present!")
 
     return retuuid
 
 def database_delete(kdb, uuId):
     """Delete given entry by uuid"""
     try:
-        encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(uuId)).bytes)
+        encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(uuId)).bytes).decode()
     except Exception as e:
-        print "ERROR: Invalid UUID: {}".format(e)
+        print("ERROR: Invalid UUID: {}".format(e))
         return 1
 
     ret = 2
@@ -1024,9 +1045,9 @@ def database_delete(kdb, uuId):
 def database_delete_group(kdb, uuId):
     """Delete given group by uuid"""
     try:
-        encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(uuId)).bytes)
+        encuuid = base64.b64encode(uuid.UUID("urn:uuid:{}".format(uuId)).bytes).decode()
     except Exception as e:
-        print "ERROR: Invalid UUID: {}".format(e)
+        print("ERROR: Invalid UUID: {}".format(e))
         return 1
 
     ret = 2
@@ -1048,7 +1069,7 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
     If doCopyToClipboard is not None, copy requested field name to clipboard.
     If copyToClipboardTimeout is not None, use it as override timer for copy to clipboard function."""
 
-    print "UUID\tTitle\tUsername\tPassword\tURL\tNotes\tGroup Name\tGroup UUID"
+    print("UUID\tTitle\tUsername\tPassword\tURL\tNotes\tGroup Name\tGroup UUID")
     isfirst = True
     for elem in kdb.obj_root.iterfind('.//Group/Entry'):
         title = ""
@@ -1065,7 +1086,7 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
             try:
                 cuuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
             except Exception as e:
-                print "ERROR: Invalid UUID: {}".format(e)
+                print("ERROR: Invalid UUID: {}".format(e))
         for sel in elem.iterfind('./String'):
             key = sel.find('./Key')
             val = sel.find('./Value')
@@ -1077,7 +1098,7 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                 origPassword = password = val.text
                 if not showPasswords:
                     if password is not None:
-                        password = "".join(map(lambda x: "*", password))
+                        password = "".join(["*" for x in password])
                     else:
                         password = "*"
             elif "URL" == key.text: url = val.text
@@ -1094,36 +1115,36 @@ def database_dump(kdb, showPasswords = False, filter = None, doCopyToClipboard =
                 try:
                     groupUuid = str(uuid.UUID(bytes=base64.b64decode(val.text)))
                 except Exception as e:
-                    print "ERROR: Invalid group UUID: {}".format(e)
+                    print("ERROR: Invalid group UUID: {}".format(e))
 
         # Check if filter allows showing data
         if filter != None:
-            if filter.has_key("uuid"):
+            if "uuid" in filter:
                 if (cuuid == None and filter["uuid"] != None) or \
                    (cuuid != None and filter["uuid"] == None) or \
                    (cuuid != None and filter["uuid"] != None and filter["uuid"].search(cuuid) == None): continue
-            if filter.has_key("title"):
+            if "title" in filter:
                 if (title == None and filter["title"] != None) or \
                    (title != None and filter["title"] == None) or \
                    (title != None and filter["title"] != None and filter["title"].search(title) == None): continue
-            if filter.has_key("username"):
+            if "username" in filter:
                 if (username == None and filter["username"] != None) or \
                    (username != None and filter["username"] == None) or \
                    (username != None and filter["username"] != None and filter["username"].search(username) == None): continue
-            if filter.has_key("url"):
+            if "url" in filter:
                 if (url == None and filter["url"] != None) or \
                    (url != None and filter["url"] == None) or \
                    (url != None and filter["url"] != None and filter["url"].search(url) == None): continue
-            if filter.has_key("groupname"):
+            if "groupname" in filter:
                 if (groupName == None and filter["groupname"] != None) or \
                    (groupName != None and filter["groupname"] == None) or \
                    (groupName != None and filter["groupname"] != None and filter["groupname"].search(groupName) == None): continue
-            if filter.has_key("groupuuid"):
+            if "groupuuid" in filter:
                 if (groupUuid == None and filter["groupuuid"] != None) or \
                    (groupUuid != None and filter["groupuuid"] == None) or \
                    (groupUuid != None and filter["groupuuid"] != None and filter["groupuuid"].search(groupUuid) == None): continue
 
-        print "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(*map(map_none, [cuuid, title, username, password, url, notes, groupName, groupUuid]))
+        print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(*list(map(map_none, [cuuid, title, username, password, url, notes, groupName, groupUuid]))))
 
         if isfirst and doCopyToClipboard != None:
             copyText = None
@@ -1175,21 +1196,21 @@ if haveReadline and args.interactive: interactive = True
 if DEBUG:
     #from pprint import pprint
     #pprint(args)
-    print "File={}".format(args.file)
-    if args.keyfile != None: print "Keyfile={}".format(args.keyfile)
-    if args.password: print "Show passwords in clear"
-    if args.title != None: print "Show only titles matching regexp '{}'".format(args.title)
-    if args.username != None: print "Show only usernames matching regexp '{}'".format(args.username)
-    if args.uuid != None: print "Show only UUID entries matching regexp '{}'".format(args.uuid)
-    if args.url != None: print "Show only URL entries matching regexp '{}'".format(args.url)
-    if args.groupname != None: print "Show only entries in the group name matching regexp '{}'".format(args.groupname)
-    if args.groupuuid != None: print "Show only entries in the group uuid matching regexp '{}'".format(args.groupuuid)
-    if args.copy != None: print "Copy {} field to clipboard".format(args.copy)
-    if interactive: print "Requested interactive shell"
+    print("File={}".format(args.file))
+    if args.keyfile != None: print("Keyfile={}".format(args.keyfile))
+    if args.password: print("Show passwords in clear")
+    if args.title != None: print("Show only titles matching regexp '{}'".format(args.title))
+    if args.username != None: print("Show only usernames matching regexp '{}'".format(args.username))
+    if args.uuid != None: print("Show only UUID entries matching regexp '{}'".format(args.uuid))
+    if args.url != None: print("Show only URL entries matching regexp '{}'".format(args.url))
+    if args.groupname != None: print("Show only entries in the group name matching regexp '{}'".format(args.groupname))
+    if args.groupuuid != None: print("Show only entries in the group uuid matching regexp '{}'".format(args.groupuuid))
+    if args.copy != None: print("Copy {} field to clipboard".format(args.copy))
+    if interactive: print("Requested interactive shell")
 
 masterPassword = getpass.getpass("Master password: ")
 if DEBUG >= 2:
-    print "Master password={}".format(masterPassword)
+    print("Master password={}".format(masterPassword))
 
 showPasswords = args.password
 
@@ -1211,14 +1232,14 @@ try :
     else:
         raise Exception("Unknown/unsupported database format implementation in libkeepass!")
 
-    if args.dopprint: print kdb.pretty_print()
+    if args.dopprint: print(kdb.pretty_print())
     if interactive:
         options = { 'show_passwords_bool': showPasswords, 'copy_to_clipboard_str': args.copy }
         while True:
             try:
                 Shell(kdba, args.file, masterPassword, args.keyfile, options).cmdloop()
             except KeyboardInterrupt:
-                print
+                print()
                 continue
             break
     else:
@@ -1231,7 +1252,7 @@ try :
         if args.groupuuid != None: filters['groupuuid'] = decode_input_value_and_regex(args.groupuuid)
         database_dump(kdb, showPasswords, filters, args.copy)
 except Exception as e:
-    print "ERROR: {}".format(e)
+    print("ERROR: {}".format(e))
     if DEBUG:
         traceback.print_exc(file=sys.stdout)
 finally:
