@@ -672,7 +672,7 @@ def copyToClipboard(text, timeout=12):
     for prog in progs:
         try:
             pipe = subprocess.Popen(prog, stdin=subprocess.PIPE)
-            pipe.communicate(text)
+            pipe.communicate(text.encode())
         except Exception as e:
             print("Unable to copy text to clipboard: {}".format(e))
             return
@@ -693,7 +693,7 @@ def copyToClipboard(text, timeout=12):
     for prog in progs:
         try:
             pipe = subprocess.Popen(prog, stdin=subprocess.PIPE)
-            pipe.communicate("")
+            pipe.communicate(b"")
         except Exception as e:
             print("Unable to copy text to clipboard: {}".format(e))
             return
